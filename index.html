@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>乃木フェス計算ツール</title>
+
+<style>
+
+:root{
+  --accent:#a000ff;
+}
+
+*{
+  box-sizing:border-box;
+}
+
+body{
+  margin:0;
+  padding:30px;
+  background:#f3f3f3;
+  font-family:sans-serif;
+}
+
+h1{
+  text-align:center;
+  color:var(--accent);
+  margin-bottom:40px;
+}
+
+.main{
+  display:flex;
+  justify-content:center;
+  gap:30px;
+  flex-wrap:wrap;
+  align-items:flex-start;
+}
+
+.card{
+  width:420px;
+  background:#fff;
+  border:4px solid #222;
+  border-radius:50px;
+  padding:25px;
+}
+
+.card h2{
+  text-align:center;
+  color:var(--accent);
+  margin-bottom:25px;
+}
+
+label{
+  display:block;
+  margin-top:15px;
+  margin-bottom:5px;
+  font-size:18px;
+}
+
+.section-title{
+  margin-top:25px;
+  margin-bottom:10px;
+  font-size:24px;
+  font-weight:bold;
+}
+
+input,
+select{
+  width:100%;
+  height:55px;
+  border-radius:15px;
+  border:2px solid #ccc;
+  padding:10px;
+  font-size:20px;
+}
+
+.rankRow{
+  display:flex;
+  align-items:center;
+  gap:15px;
+  margin-top:12px;
+}
+
+.rankRow span{
+  width:60px;
+  font-size:24px;
+}
+
+.rankRow select{
+  flex:1;
+}
+
+.buttonArea{
+  display:flex;
+  justify-content:center;
+  margin-top:30px;
+}
+
+.timeRow{
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+
+.timeRow input{
+  flex:1;
+}
+
+.timeRow span{
+  font-size:18px;
+}
+
+#calc{
+  width:320px;
+  height:70px;
+
+  border:none;
+  border-radius:20px;
+
+  background:linear-gradient(
+    #d500ff,
+    #9600ff
+  );
+
+  color:white;
+  font-size:30px;
+  font-weight:bold;
+  cursor:pointer;
+}
+
+.results{
+  display:none;
+
+  max-width:870px;
+
+  margin:30px auto;
+
+  background:white;
+
+  border:4px solid #222;
+  border-radius:40px;
+
+  padding:30px;
+}
+
+.results h2{
+  color:var(--accent);
+  margin-top:0;
+}
+
+.resultItem{
+  font-size:20px;
+  margin-bottom:12px;
+}
+
+.disabled{
+  background:#ddd !important;
+  color:#666;
+}
+
+@media(max-width:900px){
+
+  .card{
+    width:100%;
+  }
+
+}
+
+</style>
+</head>
+
+<body>
+
+<h1>乃木フェス計算ツール</h1>
+
+<div class="main">
+
+  <!-- 通常曲 -->
+
+  <div class="card">
+
+    <h2>通常曲</h2>
+
+    <label>曲選択</label>
+    <select id="normalSong"></select>
+
+    <label>曲時間</label>
+
+<div class="timeRow">
+  <input id="normalMin" readonly>
+  <span>分</span>
+
+  <input id="normalSec" readonly>
+  <span>秒</span>
+</div>
+
+    <div class="section-title">
+      精度
+    </div>
+
+    <div class="rankRow">
+      <span>FE</span>
+      <select id="fe"></select>
+    </div>
+
+    <div class="rankRow">
+      <span>FC</span>
+      <select id="fc"></select>
+    </div>
+
+    <div class="rankRow">
+      <span>A</span>
+      <select id="a"></select>
+    </div>
+
+    <div class="rankRow">
+      <span>B</span>
+      <select id="b"></select>
+    </div>
+
+    <div class="rankRow">
+      <span>C</span>
+      <select id="c"></select>
+    </div>
+
+    <div class="rankRow">
+      <span>D</span>
+      <select id="d"></select>
+    </div>
+
+  </div>
+
+  <!-- イベント曲 -->
+
+  <div class="card">
+
+    <h2>イベント曲</h2>
+
+<label>イベント曲時間</label>
+
+<div class="timeRow">
+
+  <input
+    id="eventMin"
+    type="number"
+    min="0"
+    placeholder="0"
+  >
+
+  <span>分</span>
+
+  <input
+    id="eventSec"
+    type="number"
+    min="0"
+    max="59"
+    placeholder="0"
+  >
+
+  <span>秒</span>
+
+</div>
+
+    <label>特攻値</label>
+
+    <input
+      id="bonus"
+      type="number"
+      placeholder="-"
+    >
+
+    <label>イベント獲得PT</label>
+
+    <input
+      id="eventPoint"
+      readonly
+      placeholder="-"
+    >
+
+  </div>
+
+</div>
+
+<div class="buttonArea">
+  <button id="calc">計算</button>
+</div>
+
+<div class="results" id="results">
+
+  <h2>Result</h2>
+
+  <div id="output"></div>
+
+</div>
+
+<script>
+
+/* --------------------
+   通常曲
+-------------------- */
+
+const normalSongs = [
+  { name: "最後のTightHug", time: 236 },
+  { name: "サヨナラの意味 向井葉月セレモニー", time: 237 },
+  { name: "あと7曲", time: 237 },
+  { name: "三番目の風", time: 238 },
+  { name: "渋谷ブルース", time: 224 },
+  ];
+
+const normalSong =
+  document.getElementById("normalSong");
+
+const normalTime =
+  document.getElementById("normalTime");
+
+normalSongs.forEach(song => {
+
+  const option =
+    document.createElement("option");
+
+  option.value = song.time;
+  option.textContent = song.name;
+
+  normalSong.appendChild(option);
+
+});
+
+const normalMin =
+document.getElementById("normalMin");
+
+const normalSec =
+document.getElementById("normalSec");
+
+function updateNormalTime(){
+
+  const totalSec =
+    Number(normalSong.value);
+
+  normalMin.value =
+    Math.floor(totalSec / 60);
+
+  normalSec.value =
+    totalSec % 60;
+
+}
+
+updateNormalTime();
+
+normalSong.addEventListener(
+  "change",
+  updateNormalTime
+);
+
+/* --------------------
+   精度
+-------------------- */
+
+const accuracyIds = [
+  "fe",
+  "fc",
+  "a",
+  "b",
+  "c",
+  "d"
+];
+
+const rates = [
+  100,
+  90,
+  80,
+  70,
+  60,
+  50,
+  40,
+  30,
+  20,
+  10,
+  0
+];
+
+function updateAccuracyOptions() {
+
+  let totalUsed = 0;
+
+  accuracyIds.forEach(id => {
+
+    totalUsed += Number(
+      document.getElementById(id).value || 0
+    );
+
+  });
+
+  accuracyIds.forEach(id => {
+
+    const select =
+      document.getElementById(id);
+
+    const current =
+      Number(select.value || 0);
+
+    const available =
+      100 - (totalUsed - current);
+
+    const currentValue =
+      select.value;
+
+    select.innerHTML = "";
+
+    const empty =
+      document.createElement("option");
+
+    empty.value = "";
+    empty.textContent = "-";
+
+    select.appendChild(empty);
+
+    rates.forEach(rate => {
+
+      if(rate > available){
+        return;
+      }
+
+      const option =
+        document.createElement("option");
+
+      option.value = rate;
+      option.textContent =
+        rate + "%";
+
+      select.appendChild(option);
+
+    });
+
+    if(
+      [...select.options].some(
+        o => o.value === currentValue
+      )
+    ){
+      select.value = currentValue;
+    }
+
+  });
+
+}
+
+updateAccuracyOptions();
+
+accuracyIds.forEach(id => {
+
+  document
+    .getElementById(id)
+    .addEventListener(
+      "change",
+      updateAccuracyOptions
+    );
+
+});
+
+/* --------------------
+   特攻値 → PT
+-------------------- */
+
+const bonusInput =
+  document.getElementById("bonus");
+
+const eventPointInput =
+  document.getElementById("eventPoint");
+
+function updateEventPoint() {
+
+  const bonus =
+    Number(
+      bonusInput.value || 0
+    );
+
+  if (!bonusInput.value) {
+
+    eventPointInput.value = "";
+    return;
+
+  }
+
+  const multiplier =
+    bonus / 100;
+
+  const point =
+    Math.floor(
+      1150 *
+      (1 + multiplier)
+      + 288
+    );
+
+  eventPointInput.value =
+    point;
+
+}
+
+bonusInput.addEventListener(
+  "input",
+  updateEventPoint
+);
+
+/* --------------------
+   計算ボタン
+-------------------- */
+
+document
+.getElementById("calc")
+.addEventListener(
+"click",
+()=>{
+
+  const result =
+    document.getElementById("results");
+
+  const output =
+    document.getElementById("output");
+
+  result.style.display = "block";
+
+  /* アイテム数 */
+
+  const itemMap = {
+    fe:930,
+    fc:894,
+    a:858,
+    b:822,
+    c:786,
+    d:750
+  };
+
+  /* 平均アイテム数 */
+
+  let averageItem = 0;
+
+  accuracyIds.forEach(id=>{
+
+    const percent =
+      Number(
+        document.getElementById(id).value || 0
+      );
+
+    averageItem +=
+      itemMap[id] *
+      (percent / 100);
+
+  });
+
+  /* 通常曲時間(秒) */
+
+  const normalSongTime =
+
+    Number(
+      document.getElementById("normalMin").value || 0
+    ) * 60
+
+    +
+
+    Number(
+      document.getElementById("normalSec").value || 0
+    );
+
+  /* イベント曲時間(秒) */
+
+  const eventSongTime =
+
+    Number(
+      document.getElementById("eventMin").value || 0
+    ) * 60
+
+    +
+
+    Number(
+      document.getElementById("eventSec").value || 0
+    );
+
+  /* 通常曲フル時間 */
+
+  const normalFullTime =
+
+    (
+      99999 /
+      averageItem
+    ) *
+    normalSongTime;
+
+  /* イベント曲フル時間 */
+
+  const eventFullTime =
+    eventSongTime * 114;
+
+  /* イベントフル獲得PT */
+
+  const eventFullPoint =
+    Number(eventPointInput.value || 0)
+    * 114;
+
+  /* 総時間 */
+
+  const totalTime =
+    normalFullTime +
+    eventFullTime;
+
+  /* 24時間で何セット回せるか */
+
+  const dayCycle =
+    86400 / totalTime;
+
+  /* 24時間獲得PT */
+
+  const dayPoint =
+    dayCycle *
+    eventFullPoint;
+
+  /* 225時間で何セット回せるか */
+
+  const total225Cycle =
+    (225 * 3600) /
+    totalTime;
+
+  /* 225時間獲得PT */
+
+  const total225Point =
+    total225Cycle *
+    eventFullPoint;
+
+  /* 秒→時間変換 */
+
+  function secToTime(sec){
+
+    const h =
+      Math.floor(sec / 3600);
+
+    const m =
+      Math.floor(
+        (sec % 3600) / 60
+      );
+
+    const s =
+      Math.floor(
+        sec % 60
+      );
+
+    return `${h}時間 ${m}分 ${s}秒`;
+
+  }
+
+  /* 精度表示 */
+
+  const accuracyResult =
+    accuracyIds
+      .map(id=>{
+
+        const value =
+          document.getElementById(id).value;
+
+        if(!value){
+          return "";
+        }
+
+        return `
+          ${id.toUpperCase()}
+          ：${value}%
+        `;
+
+      })
+      .filter(v=>v !== "")
+      .join("<br>");
+
+  output.innerHTML = `
+
+     <hr>
+
+    <div class="resultItem">
+      平均アイテム数：
+      ${averageItem.toFixed(2)}
+    </div>
+
+    <div class="resultItem">
+      通常曲フル時間：
+      ${secToTime(normalFullTime)}
+    </div>
+
+    <div class="resultItem">
+      イベント曲フル時間：
+      ${secToTime(eventFullTime)}
+    </div>
+
+    <div class="resultItem">
+      イベントフル獲得PT：
+      ${Math.floor(eventFullPoint).toLocaleString()}
+    </div>
+
+    <hr>
+
+    <div class="resultItem">
+      1日換算：
+      ${dayCycle.toFixed(2)}セット
+    </div>
+
+    <div class="resultItem">
+      1日獲得PT：
+      ${Math.floor(dayPoint).toLocaleString()}
+    </div>
+
+    <hr>
+
+    <div class="resultItem">
+      推定イベント時間換算：
+      ${total225Cycle.toFixed(2)}セット
+    </div>
+
+    <div class="resultItem">
+      推定イベント全体PT：
+      ${Math.floor(total225Point).toLocaleString()}
+    </div>
+
+  `;
+
+});
+</script>
+
+</body>
+</html>
