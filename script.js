@@ -6,7 +6,6 @@
 // ===================================
 
 const normalSong = document.getElementById("normalSong");
-const normalHour = document.getElementById("normalHour");
 const normalMin = document.getElementById("normalMin");
 const normalSec = document.getElementById("normalSec");
 
@@ -119,8 +118,7 @@ normalSongs.forEach((song, index) => {
 function updateNormalSongTime() {
   const song = normalSongs[normalSong.selectedIndex];
 
-  normalHour.value = Math.floor(song.time / 3600);
-  normalMin.value = Math.floor((song.time % 3600) / 60);
+  normalMin.value = Math.floor(song.time / 60);
   normalSec.value = song.time % 60;
 }
 
