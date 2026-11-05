@@ -1,4 +1,3 @@
-
 * {
   box-sizing: border-box;
 }
@@ -23,12 +22,7 @@ body {
   margin: 0 -22px 20px;
   padding: 15px;
   text-align: center;
-  background: linear-gradient(
-    110deg,
-    #c56aff,
-    #6e16bd,
-    #a34df2
-  );
+  background: linear-gradient(110deg, #c56aff, #6e16bd, #a34df2);
   color: white;
   box-shadow: inset 0 -3px 10px #ffffff40;
 }
@@ -40,7 +34,7 @@ body {
   text-shadow: 0 2px 8px #ffffff80;
 }
 
-/* 共通パネル */
+/* パネル */
 .panel {
   border: 2px solid #d9b8ff;
   border-radius: 17px;
@@ -53,16 +47,7 @@ body {
   padding: 10px 18px;
   color: white;
   font-size: 25px;
-  background: linear-gradient(
-    100deg,
-    #8f35d0,
-    #6d24ae,
-    #a44be4
-  );
-}
-
-.panel-title span {
-  margin-right: 8px;
+  background: linear-gradient(100deg, #8f35d0, #6d24ae, #a44be4);
 }
 
 /* プレイ用途 */
@@ -98,7 +83,43 @@ body {
   accent-color: #842acb;
 }
 
-/* 通常曲・イベント曲 */
+/* ネット速度 */
+.network-area {
+  border: 2px solid #9b35df;
+  border-radius: 15px;
+  padding: 12px 20px;
+  margin-bottom: 15px;
+  background: #f7efff;
+}
+
+.network-area h3 {
+  color: #8124c5;
+  margin: 0 0 10px;
+  font-size: 18px;
+}
+
+.network-options {
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.network-options label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #6515a8;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.network-options input {
+  accent-color: #922bd1;
+}
+
+/* 曲 */
 .song-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -147,8 +168,8 @@ input[type="number"] {
 
 .time-inputs input {
   width: 76px;
-  min-width: 76px;
-  flex: 0 0 76px;
+  min-width: 0;
+  flex: 1 1 0;
   padding: 9px 5px;
   text-align: center;
   font-size: 18px;
@@ -234,6 +255,49 @@ input[type="number"] {
   width: 125px;
 }
 
+/* 混合モード */
+.mixed-panel {
+  margin-bottom: 22px;
+}
+
+.mixed-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 15px;
+  padding: 18px;
+}
+
+.mixed-time-card {
+  padding: 15px;
+  border: 2px solid #dfc4fa;
+  border-radius: 13px;
+  background: #fbf8ff;
+}
+
+.mixed-time-card h3 {
+  margin: 0 0 13px;
+  color: #7926b9;
+  font-size: 18px;
+}
+
+.mixed-time-card .time-inputs input {
+  width: 65px;
+}
+
+.time-note {
+  margin: 0 18px 8px;
+  color: #75449b;
+  font-size: 14px;
+}
+
+.daily-total {
+  margin: 0 18px 18px;
+  color: #7926b9;
+  font-size: 18px;
+  font-weight: bold;
+  text-align: right;
+}
+
 /* 計算ボタン */
 .calc-button {
   display: block;
@@ -242,11 +306,7 @@ input[type="number"] {
   padding: 12px;
   border: none;
   border-radius: 50px;
-  background: linear-gradient(
-    100deg,
-    #9d43dc,
-    #7022b7
-  );
+  background: linear-gradient(100deg, #9d43dc, #7022b7);
   color: white;
   font-size: 27px;
   font-weight: bold;
@@ -270,7 +330,7 @@ input[type="number"] {
 
 .result-summary {
   display: grid;
-  grid-template-columns: 0.8fr 1.3fr 1.2fr 1.7fr 1.7fr;
+  grid-template-columns: repeat(5, 1fr);
   align-items: center;
   border-bottom: 2px solid #dfc4fa;
   padding-bottom: 20px;
@@ -298,11 +358,11 @@ input[type="number"] {
 .summary-item strong {
   display: block;
   color: #7926b9;
-  font-size: 21px;
+  font-size: 19px;
   overflow-wrap: anywhere;
 }
 
-/* Result下段 */
+/* Resultカード */
 .result-bottom {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -320,27 +380,23 @@ input[type="number"] {
 .result-card h3 {
   margin: 0;
   padding: 7px;
-  background: linear-gradient(
-    100deg,
-    #a14be0,
-    #7b28bf
-  );
+  background: linear-gradient(100deg, #a14be0, #7b28bf);
   color: white;
   font-size: 20px;
 }
 
 .result-card p {
   margin: 12px 5px;
-  font-size: 18px;
+  font-size: 17px;
   font-weight: bold;
 }
 
 .result-card strong {
   color: #7926b9;
-  font-size: 23px;
+  font-size: 21px;
 }
 
-/* スマホ対応 */
+/* スマホ */
 @media (max-width: 700px) {
   body {
     padding: 8px;
@@ -365,7 +421,8 @@ input[type="number"] {
     font-size: 18px;
   }
 
-  .song-grid {
+  .song-grid,
+  .mixed-grid {
     grid-template-columns: 1fr;
   }
 
@@ -388,6 +445,20 @@ input[type="number"] {
     width: 100%;
   }
 
+  .mixed-time-card .time-inputs {
+    gap: 4px;
+  }
+
+  .mixed-time-card .time-inputs input {
+    width: 45px;
+    padding: 8px 2px;
+    font-size: 15px;
+  }
+
+  .mixed-time-card .time-inputs span {
+    font-size: 13px;
+  }
+
   .result-summary {
     grid-template-columns: repeat(2, 1fr);
     row-gap: 18px;
@@ -406,4 +477,30 @@ input[type="number"] {
   .summary-item strong {
     font-size: 17px;
   }
+
+  .item-inventory {
+  margin: 15px 0;
+  padding: 15px;
+  text-align: center;
+  background: #f5edff;
+  border: 1px solid #d8b4fe;
+  border-radius: 10px;
+}
+
+.item-inventory p {
+  margin: 0 0 8px;
+  font-weight: bold;
+}
+
+.item-inventory strong {
+  display: block;
+  color: #7926b9;
+  font-size: 28px;
+}
+
+.item-inventory small {
+  display: block;
+  margin-top: 6px;
+  color: #666;
+}
 }
