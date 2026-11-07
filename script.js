@@ -1733,8 +1733,6 @@ function showSingleResult(song, isManual, result) {
   $("resultDayPoint").textContent =
     Math.floor(result.dayPoint).toLocaleString();
 
-  $("result225Set").textContent =
-    result.projectedEventRuns.toLocaleString();
 
   $("result225Point").textContent =
     Math.floor(result.projectedPoint).toLocaleString();
@@ -1762,8 +1760,7 @@ function showMixedResult(song, result) {
   $("resultDayPoint").textContent =
     Math.floor(result.dailyPoint).toLocaleString();
 
-  $("result225Set").textContent =
-    result.projectedEventRuns.toLocaleString();
+
 
   $("result225Point").textContent =
     Math.floor(result.projectedPoint).toLocaleString();
