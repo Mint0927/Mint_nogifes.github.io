@@ -56,25 +56,29 @@ const itemsPerEventSong = 875;
 const manualBonusAddition = 144;
 const eventDurationHours = 225;
 
+const MAX_DAILY_SECONDS = 86400;
+const WHEEL_ROW_HEIGHT = 40;
+
 // ===================================
 // 状態管理
 // ===================================
 
 const wheelState = {
   normalBg: {
-    minutes: 0,
+    seconds: 0,
     hour: 0,
-    minute: 0
+    minute: 0,
+    second: 0
   },
   eventBg: {
-    minutes: 0,
+    seconds: 0,
     hour: 0,
-    minute: 0
+    minute: 0,
+    second: 0
   }
 };
 
 let isFullBackground = false;
-let lastValidValues = {};
 let depletionAlertActive = false;
 let eventTimeAlertActive = false;
 let latestMixedResult = null;
@@ -96,16 +100,24 @@ function getInputTime(h, m, s) {
 }
 
 function getWheelMinutes(key) {
-  return wheelState[key]?.minutes || 0;
+  return Math.floor((wheelState[key]?.seconds || 0) / 60);
+}
+
+function getWheelSeconds(key) {
+  return wheelState[key]?.seconds || 0;
 }
 
 function getSelectedPlayMode() {
-  return document.querySelector('input[name="playMode"]:checked').value;
+  return document.querySelector(
+    'input[name="playMode"]:checked'
+  ).value;
 }
 
 function getNetworkTime() {
   return Number(
-    document.querySelector('input[name="networkSpeed"]:checked').value
+    document.querySelector(
+      'input[name="networkSpeed"]:checked'
+    ).value
   );
 }
 
@@ -130,32 +142,355 @@ function resetResult() {
 }
 
 // ===================================
-// タブ切り替え
+// 特攻値の変更設定
 // ===================================
 
-function switchTab(name) {
-  document.querySelectorAll(".tab-button").forEach(button => {
-    const active = button.dataset.tab === name;
-
-    button.classList.toggle("active", active);
-    button.setAttribute("aria-selected", String(active));
-  });
-
-  document.querySelectorAll(".tab-panel").forEach(panel => {
-    panel.classList.remove("active");
-  });
-
-  $(`${name}Tab`).classList.add("active");
+// 変更時刻をイベント開始からの経過秒数に変換
+function getBonusChangeSeconds(day, hour, minute) {
+  return (
+    (day - 1) * 86400 +
+    hour * 3600 +
+    minute * 60
+  );
 }
 
-document.querySelectorAll(".tab-button").forEach(button => {
-  button.addEventListener("click", () => {
-    switchTab(button.dataset.tab);
+// ===================================
+// 特攻値変更欄の追加
+// ===================================
+
+// ===================================
+// 特攻値変更欄の追加
+// ===================================
+
+function addBonusChangeRow() {
+  const row = document.createElement("div");
+
+  row.className = "bonus-change-row";
+
+  row.innerHTML = `
+    <div class="bonus-change-time">
+      <label>適用時間</label>
+
+      <div class="bonus-time-inputs">
+        <div class="bonus-time-unit">
+          <input type="number"
+            data-field="day"
+            min="1"
+            max="10"
+            value="1"
+            inputmode="numeric">
+          <span>日目</span>
+        </div>
+
+        <div class="bonus-time-unit">
+          <input type="number"
+            data-field="hour"
+            min="0"
+            max="23"
+            value="0"
+            inputmode="numeric">
+          <span>時間</span>
+        </div>
+
+        <div class="bonus-time-unit">
+          <input type="number"
+            data-field="minute"
+            min="0"
+            max="59"
+            value="0"
+            inputmode="numeric">
+          <span>分</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="bonus-change-value">
+      <label>変更特攻値</label>
+
+      <div class="bonus-change-controls">
+        <div class="bonus-input-unit">
+          <input type="number"
+            data-field="bonus"
+            min="0"
+            max="9999"
+            value="0"
+            inputmode="numeric">
+          <span>%</span>
+        </div>
+
+        <div class="bonus-change-point">
+          <span>イベントPT</span>
+          <output data-field="point">1,438 pt</output>
+        </div>
+
+        <button type="button"
+          class="delete-bonus-button"
+          aria-label="この変更を削除">
+          削除
+        </button>
+      </div>
+    </div>
+  `;
+
+  $("bonusChanges").appendChild(row);
+
+  updateBonusChangePoints();
+  resetResult();
+  updateMixedPreview();
+}
+
+// ===================================
+// 特攻値変更欄の削除
+// ===================================
+
+$("addBonusChange").addEventListener("click", () => {
+  alert("追加ボタンのクリックを検知しました");
+  addBonusChangeRow();
+});
+
+$("bonusChanges").addEventListener("click", event => {
+  const button = event.target.closest(
+    ".delete-bonus-button"
+  );
+
+  if (!button) {
+    return;
+  }
+
+  button.closest(".bonus-change-row").remove();
+
+  updateBonusChangePoints();
+  resetResult();
+  updateMixedPreview();
+});
+
+// ===================================
+// 特攻値変更欄のポイント表示
+// ===================================
+
+function updateBonusChangePoints() {
+  document.querySelectorAll(
+    ".bonus-change-row"
+  ).forEach(row => {
+    const input = row.querySelector(
+      '[data-field="bonus"]'
+    );
+
+    const output = row.querySelector(
+      '[data-field="point"]'
+    );
+
+    const bonus = Number(input.value);
+
+    if (
+      input.value === "" ||
+      !Number.isInteger(bonus) ||
+      bonus < 0 ||
+      bonus > 9999
+    ) {
+      output.textContent = "pt";
+      return;
+    }
+
+    output.textContent =
+      `${calculateEventPoint(bonus).toLocaleString()} pt`;
   });
+}
+
+// ===================================
+// 特攻値変更欄の入力イベント
+// ===================================
+
+$("bonusChanges").addEventListener("input", () => {
+  updateBonusChangePoints();
+  resetResult();
+  updateMixedPreview();
+});
+
+// ===================================
+// 特攻値スケジュール取得
+// ===================================
+
+function getBonusSchedule(showAlert = true) {
+  const baseInput = $("bonus");
+  const baseBonus = Number(baseInput.value);
+
+  if (
+    baseInput.value === "" ||
+    !Number.isInteger(baseBonus) ||
+    baseBonus < 0 ||
+    baseBonus > 9999
+  ) {
+    if (showAlert) {
+      alert("初期特攻値は0～9999%で入力してください。");
+    }
+
+    return null;
+  }
+
+  const schedule = [
+    {
+      seconds: 0,
+      bonus: baseBonus
+    }
+  ];
+
+  const rows = Array.from(
+    document.querySelectorAll(".bonus-change-row")
+  );
+
+  for (const row of rows) {
+    const dayInput = row.querySelector('[data-field="day"]');
+    const hourInput = row.querySelector('[data-field="hour"]');
+    const minuteInput = row.querySelector('[data-field="minute"]');
+    const bonusInput = row.querySelector('[data-field="bonus"]');
+
+    const day = Number(dayInput.value);
+    const hour = Number(hourInput.value);
+    const minute = Number(minuteInput.value);
+    const bonus = Number(bonusInput.value);
+
+    if (
+      dayInput.value === "" ||
+      hourInput.value === "" ||
+      minuteInput.value === "" ||
+      bonusInput.value === "" ||
+      !Number.isInteger(day) ||
+      !Number.isInteger(hour) ||
+      !Number.isInteger(minute) ||
+      !Number.isInteger(bonus) ||
+      day < 1 ||
+      day > 10 ||
+      hour < 0 ||
+      hour > 23 ||
+      minute < 0 ||
+      minute > 59 ||
+      bonus < 0 ||
+      bonus > 9999
+    ) {
+      if (showAlert) {
+        alert(
+          "追加した特攻値の適用時間・特攻値を正しく入力してください。"
+        );
+      }
+
+      return null;
+    }
+
+    const seconds = getBonusChangeSeconds(
+      day,
+      hour,
+      minute
+    );
+
+    if (seconds >= eventDurationHours * 3600) {
+      if (showAlert) {
+        alert(
+          "特攻値の変更時刻はイベント終了前に設定してください。"
+        );
+      }
+
+      return null;
+    }
+
+    schedule.push({
+      seconds,
+      bonus
+    });
+  }
+
+  // 適用時間順に並べる
+  schedule.sort((a, b) => a.seconds - b.seconds);
+
+  // 同じ時刻の重複を確認
+  for (let i = 1; i < schedule.length; i++) {
+    if (schedule[i].seconds === schedule[i - 1].seconds) {
+      if (showAlert) {
+        alert(
+          "特攻値の変更時刻が重複しています。別の時間を設定してください。"
+        );
+      }
+
+      return null;
+    }
+  }
+
+  return schedule;
+}
+
+// ===================================
+// 経過時間に応じた特攻値を取得
+// ===================================
+
+function getBonusAtElapsed(elapsedSeconds, schedule) {
+  let currentBonus = schedule[0].bonus;
+
+  for (const item of schedule) {
+    if (elapsedSeconds >= item.seconds) {
+      currentBonus = item.bonus;
+    } else {
+      break;
+    }
+  }
+
+  return currentBonus;
+}
+
+// ===================================
+// エラー表示
+// ===================================
+
+function showMixedCalculationError(errors) {
+  const messages = [];
+
+  if (errors.includes("limit")) {
+    messages.push(
+      "通常曲で獲得するアイテムが99,999個を超えてしまいます。"
+    );
+  }
+
+  if (errors.includes("depletion")) {
+    messages.push(
+      "イベント曲を設定時間分プレイするためのアイテムが不足します。"
+    );
+  }
+
+  if (messages.length === 0) {
+    messages.push(
+      "設定した時間でプレイできる組み合わせが見つかりませんでした。"
+    );
+  }
+
+  alert(
+    "設定したBG時間では計算できません。\n\n" +
+    messages.join("\n") +
+    "\n\nBG時間を調整してください。"
+  );
+}
+
+// ===================================
+// 画面切り替え
+// ===================================
+
+function showScreen(name) {
+  $("settingsScreen").hidden = name !== "settings";
+  $("playScreen").hidden = name !== "play";
+  $("resultScreen").hidden = name !== "result";
+}
+
+$("openSettings").addEventListener("click", () => {
+  showScreen("settings");
+});
+
+$("saveSettings").addEventListener("click", () => {
+  alert("保存ボタンのクリックを検知しました");
+  showScreen("play");
+  updatePlayMode();
+  refreshWheelLimits();
 });
 
 $("backToPlay").addEventListener("click", () => {
-  switchTab("play");
+  showScreen("play");
 });
 
 // ===================================
@@ -206,7 +541,6 @@ accuracyIds.forEach(id => {
   select.addEventListener("change", () => {
     updateAccuracyLimit();
 
-    // 精度を変更したらBG時間を初期化
     ["normalBg", "eventBg"].forEach(key => {
       setWheelValue(key, 0);
     });
@@ -292,7 +626,7 @@ function updateEventPoint() {
   }
 
   $("eventPoint").textContent =
-    `${calculateEventPoint(bonus).toLocaleString()} PT`;
+    `${calculateEventPoint(bonus).toLocaleString()} pt`;
 }
 
 $("bonus").addEventListener("input", () => {
@@ -308,12 +642,10 @@ updateEventPoint();
 // ===================================
 
 function getCycleTime(songTime, isManual, isEvent, networkTime) {
-  // 手打ちの場合
   const loadTime = isManual
     ? networkTime + (isEvent ? 1 : 0)
     : 0;
 
-  // BGの場合は待機時間15秒
   const standby = isManual
     ? 0
     : standbyBackground;
@@ -352,7 +684,6 @@ function usedTime(runs, cycleInfo) {
     return 0;
   }
 
-  // 最後の1回分の待機時間は不要
   return runs * cycleInfo.cycle - cycleInfo.standby;
 }
 
@@ -395,11 +726,9 @@ const backgroundModeButton = $("backgroundModeButton");
 function setFullMode(isBackground) {
   isFullBackground = isBackground;
 
-  // ボタンの選択状態
   manualModeButton.classList.toggle("active", !isFullBackground);
   backgroundModeButton.classList.toggle("active", isFullBackground);
 
-  // 選択状態をアクセシビリティにも反映
   manualModeButton.setAttribute(
     "aria-pressed",
     String(!isFullBackground)
@@ -410,18 +739,15 @@ function setFullMode(isBackground) {
     String(isFullBackground)
   );
 
-  // BGでは精度入力を非表示
   $("accuracyArea").hidden = isFullBackground;
 
   resetResult();
 }
 
-// フル手打ち
 manualModeButton.addEventListener("click", () => {
   setFullMode(false);
 });
 
-// フルバックグラウンド
 backgroundModeButton.addEventListener("click", () => {
   setFullMode(true);
 });
@@ -432,28 +758,45 @@ backgroundModeButton.addEventListener("click", () => {
 
 function getBgTimes() {
   return {
-    normalBg: getWheelMinutes("normalBg") * 60,
-    eventBg: getWheelMinutes("eventBg") * 60
+    normalBg: wheelState.normalBg.seconds,
+    eventBg: wheelState.eventBg.seconds
   };
 }
+
+// ===================================
+// 1日のBG合計時間表示
+// ===================================
 
 function updateDailyTimeTotal() {
   const times = getBgTimes();
 
-  const totalMinutes =
-    times.normalBg / 60 +
-    times.eventBg / 60;
-
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes % 60;
+  const totalSeconds =
+    times.normalBg + times.eventBg;
 
   $("dailyTimeTotal").textContent =
-    `BG合計：${hours}時間 ${minutes}分 / 24時間`;
+    `BG合計：${secToTime(totalSeconds)} / 24時間`;
 
   $("dailyTimeTotal").style.color =
-    totalMinutes > 1440
+    totalSeconds > MAX_DAILY_SECONDS
       ? "#d00000"
       : "#7926b9";
+}
+// ===================================
+// BG時間ダイヤルの上限更新
+// ===================================
+
+function refreshWheelLimits() {
+  const maxSeconds = MAX_DAILY_SECONDS;
+
+  ["normalBg", "eventBg"].forEach(key => {
+    const state = wheelState[key];
+
+    if (state.seconds > maxSeconds) {
+      setWheelValue(key, maxSeconds);
+    }
+  });
+
+  updateDailyTimeTotal();
 }
 
 // ===================================
@@ -463,12 +806,13 @@ function updateDailyTimeTotal() {
 function simulateMixed(
   song,
   eventTime,
-  bonus,
   networkTime,
   itemMap,
   capacities,
   averageManual,
-  startingItems = 0
+  bonusSchedule,
+  startingItems = 0,
+  elapsedStartSeconds = 0
 ) {
   const normalManualCycle = getCycleTime(
     song.time, true, false, networkTime
@@ -522,6 +866,11 @@ function simulateMixed(
   let bgItems = 0;
   let usedItems = 0;
 
+  let elapsedSeconds = 0;
+
+  let manualDailyPoint = 0;
+  let bgDailyPoint = 0;
+
   const epsilon = 1e-7;
 
   function pickLane(names) {
@@ -554,7 +903,7 @@ function simulateMixed(
   while (guard++ < 2000) {
     let selected = null;
 
-    // イベント曲をプレイできるなら優先
+    // イベント曲を優先
     if (currentItems + epsilon >= itemsPerEventSong) {
       selected = pickLane([
         "eventManual",
@@ -578,15 +927,25 @@ function simulateMixed(
       selected = pickLane(normalCandidates);
     }
 
-    // プレイできる曲がない場合は終了
     if (selected === null) {
       break;
     }
 
     const lane = lanes[selected];
 
-    lane.runs++;
+    // プレイ開始時点の経過時間
+    const absoluteStartTime =
+      elapsedStartSeconds + elapsedSeconds;
 
+    const cost = lane.cycleInfo.cycle -
+      (lane.runs === 0
+        ? lane.cycleInfo.standby
+        : 0);
+
+    lane.runs++;
+    elapsedSeconds += cost;
+
+    // 通常曲：アイテム獲得
     if (
       selected === "normalManual" ||
       selected === "normalBg"
@@ -599,11 +958,29 @@ function simulateMixed(
       } else {
         bgItems += lane.itemsPerRun;
       }
+
+    // イベント曲：アイテム消費
     } else {
       currentItems -= itemsPerEventSong;
       usedItems += itemsPerEventSong;
+
+      const currentBonus = getBonusAtElapsed(
+        absoluteStartTime,
+        bonusSchedule
+      );
+
+      if (selected === "eventManual") {
+        manualDailyPoint += calculateEventPoint(
+          currentBonus + manualBonusAddition
+        );
+      } else {
+        bgDailyPoint += calculateEventPoint(
+          currentBonus
+        );
+      }
     }
 
+    // 誤差による上限超過を補正
     if (
       currentItems > requiredItems &&
       currentItems <= requiredItems + epsilon
@@ -612,6 +989,7 @@ function simulateMixed(
     }
   }
 
+  // 全レーンの実行状況
   const errors = [];
 
   const pendingNormal = [
@@ -621,19 +999,19 @@ function simulateMixed(
     return lanes[name].runs < lanes[name].capacity;
   });
 
-  const canAnyNormalFit = [
-    "normalManual",
-    "normalBg"
+  const pendingEvent = [
+    "eventManual",
+    "eventBg"
   ].some(name => {
-    const lane = lanes[name];
-
-    return lane.runs < lane.capacity &&
-      currentItems + lane.itemsPerRun <=
-      requiredItems + epsilon;
+    return lanes[name].runs < lanes[name].capacity;
   });
 
-  if (pendingNormal && !canAnyNormalFit) {
+  if (pendingNormal) {
     errors.push("limit");
+  }
+
+  if (pendingEvent) {
+    errors.push("depletion");
   }
 
   const normalManualRuns = lanes.normalManual.runs;
@@ -652,18 +1030,6 @@ function simulateMixed(
   const eventFullTime =
     usedTime(manualEventRuns, eventManualCycle) +
     usedTime(bgEventRuns, eventBgCycle);
-
-  const manualEventPoint = calculateEventPoint(
-    bonus + manualBonusAddition
-  );
-
-  const bgEventPoint = calculateEventPoint(bonus);
-
-  const manualDailyPoint =
-    manualEventRuns * manualEventPoint;
-
-  const bgDailyPoint =
-    bgEventRuns * bgEventPoint;
 
   const dailyPoint =
     manualDailyPoint + bgDailyPoint;
@@ -718,17 +1084,22 @@ function simulateMixed(
 function calculateMixedMode(
   song,
   eventTime,
-  bonus,
   networkTime,
   itemMap,
   showAlert = true,
-  periodSeconds = 86400,
-  startingItems = 0
+  periodSeconds = MAX_DAILY_SECONDS,
+  startingItems = 0,
+  elapsedStartSeconds = 0
 ) {
+  const bonusSchedule = getBonusSchedule(showAlert);
+
+  if (!bonusSchedule) {
+    return null;
+  }
+
   const bgTimes = getBgTimes();
 
-  // 24時間未満の場合はBG時間を比例調整
-  const ratio = periodSeconds / 86400;
+  const ratio = periodSeconds / MAX_DAILY_SECONDS;
 
   const normalBgTime =
     bgTimes.normalBg * ratio;
@@ -740,9 +1111,9 @@ function calculateMixedMode(
   const bgTotal =
     normalBgTime + eventBgTime;
 
-  if (bgTotal > periodSeconds) {
+  if (bgTotal > periodSeconds + 1e-9) {
     if (showAlert) {
-      alert("BG時間の合計が計算時間を超えています。");
+      alert("バクグラ時間の合計が計算時間を超えています。");
     }
 
     return null;
@@ -782,9 +1153,12 @@ function calculateMixedMode(
     ? capacityFor(eventBgTime, eventBgCycle)
     : 0;
 
-  const remaining = periodSeconds - bgTotal;
+  const remaining = Math.max(
+    0,
+    periodSeconds - bgTotal
+  );
 
-  // イベント時間が未入力の場合
+  // イベント曲時間が未入力の場合
   if (eventTime <= 0) {
     const manualNormalCapacity = capacityFor(
       remaining,
@@ -794,7 +1168,6 @@ function calculateMixedMode(
     const result = simulateMixed(
       song,
       0,
-      bonus,
       networkTime,
       itemMap,
       {
@@ -804,8 +1177,18 @@ function calculateMixedMode(
         eventBg: 0
       },
       averageManual,
-      startingItems
+      bonusSchedule,
+      startingItems,
+      elapsedStartSeconds
     );
+
+    if (result.errors.length > 0) {
+      if (showAlert) {
+        showMixedCalculationError(result.errors);
+      }
+
+      return null;
+    }
 
     result.optimizedManualNormalRuns =
       result.normalManualRuns;
@@ -815,14 +1198,15 @@ function calculateMixedMode(
     return result;
   }
 
+  // 手打ち時間の配分を最適化
   const maxNormalManual = capacityFor(
     remaining,
     normalManualCycle
   );
 
   let best = null;
+  const failureErrors = new Set();
 
-  // 通常曲の手打ち回数を変えて最適な組み合わせを探す
   for (
     let normalRuns = 0;
     normalRuns <= maxNormalManual;
@@ -846,7 +1230,6 @@ function calculateMixedMode(
     const candidate = simulateMixed(
       song,
       eventTime,
-      bonus,
       networkTime,
       itemMap,
       {
@@ -856,11 +1239,16 @@ function calculateMixedMode(
         eventBg: bgEventCapacity
       },
       averageManual,
-      startingItems
+      bonusSchedule,
+      startingItems,
+      elapsedStartSeconds
     );
 
-    // アイテム上限を超える候補は採用しない
-    if (candidate.errors.includes("limit")) {
+    if (candidate.errors.length > 0) {
+      candidate.errors.forEach(error => {
+        failureErrors.add(error);
+      });
+
       continue;
     }
 
@@ -876,23 +1264,14 @@ function calculateMixedMode(
     }
   }
 
-  // 有効な候補がなかった場合
   if (!best) {
-    best = simulateMixed(
-      song,
-      eventTime,
-      bonus,
-      networkTime,
-      itemMap,
-      {
-        normalManual: 0,
-        normalBg: bgNormalCapacity,
-        eventManual: 0,
-        eventBg: bgEventCapacity
-      },
-      averageManual,
-      startingItems
-    );
+    if (showAlert) {
+      showMixedCalculationError(
+        Array.from(failureErrors)
+      );
+    }
+
+    return null;
   }
 
   best.optimizedManualNormalRuns =
@@ -906,7 +1285,6 @@ function calculateMixedMode(
 
 // ===================================
 // 225時間シミュレーション
-// 24時間ごとにアイテムを引き継ぐ
 // ===================================
 
 function simulate225Hours(simulateDay) {
@@ -930,22 +1308,21 @@ function simulate225Hours(simulateDay) {
   };
 
   while (elapsed < totalSeconds) {
-    // 通常は24時間、最後は残り時間
     const periodSeconds = Math.min(
-      86400,
+      MAX_DAILY_SECONDS,
       totalSeconds - elapsed
     );
 
     const result = simulateDay(
       periodSeconds,
-      currentItems
+      currentItems,
+      elapsed
     );
 
     if (!result) {
       break;
     }
 
-    // アイテムを翌日に引き継ぐ
     currentItems = result.currentItems;
 
     total.eventRuns += result.actualEventRuns;
@@ -972,7 +1349,8 @@ function simulate225Hours(simulateDay) {
   return {
     ...total,
     currentItems,
-    elapsedSeconds: elapsed
+    elapsedSeconds: elapsed,
+    completed: elapsed >= totalSeconds
   };
 }
 
@@ -985,10 +1363,11 @@ function simulateSinglePeriod(
   isManual,
   song,
   eventTime,
-  bonus,
   networkTime,
   itemMap,
-  startingItems = 0
+  bonusSchedule,
+  startingItems = 0,
+  elapsedStartSeconds = 0
 ) {
   const averageItem = isManual
     ? calculateManualAverage(itemMap, false)
@@ -1024,15 +1403,8 @@ function simulateSinglePeriod(
 
   let elapsed = 0;
 
-  const adjustedBonus = isManual
-    ? bonus + manualBonusAddition
-    : bonus;
+  let dailyPoint = 0;
 
-  const eventPoint = calculateEventPoint(
-    adjustedBonus
-  );
-
-  // 最初のBG曲だけ待機時間を差し引く
   let firstRun = true;
 
   function getNextCost(cycleInfo) {
@@ -1045,7 +1417,6 @@ function simulateSinglePeriod(
   while (guard++ < 10000) {
     let selected = null;
 
-    // イベント曲をプレイできる場合
     if (currentItems >= itemsPerEventSong) {
       const cost = getNextCost(eventCycle);
 
@@ -1054,7 +1425,6 @@ function simulateSinglePeriod(
       }
     }
 
-    // イベント曲をプレイできない場合は通常曲
     if (selected === null) {
       const cost = getNextCost(normalCycle);
 
@@ -1087,6 +1457,20 @@ function simulateSinglePeriod(
 
     } else {
       const cost = getNextCost(eventCycle);
+
+      // プレイ開始時点の特攻値を取得
+      const currentBonus = getBonusAtElapsed(
+        elapsedStartSeconds + elapsed,
+        bonusSchedule
+      );
+
+      const adjustedBonus = isManual
+        ? currentBonus + manualBonusAddition
+        : currentBonus;
+
+      dailyPoint += calculateEventPoint(
+        adjustedBonus
+      );
 
       elapsed += cost;
       eventTimeUsed += cost;
@@ -1128,15 +1512,15 @@ function simulateSinglePeriod(
     normalFullTime: normalTime,
     eventFullTime: eventTimeUsed,
 
-    dailyPoint: eventRuns * eventPoint,
+    dailyPoint,
 
     manualDailyPoint: isManual
-      ? eventRuns * eventPoint
+      ? dailyPoint
       : 0,
 
     bgDailyPoint: isManual
       ? 0
-      : eventRuns * eventPoint
+      : dailyPoint
   };
 }
 
@@ -1148,10 +1532,15 @@ function calculateSingleMode(
   isManual,
   song,
   eventTime,
-  bonus,
   networkTime,
   itemMap
 ) {
+  const bonusSchedule = getBonusSchedule(true);
+
+  if (!bonusSchedule) {
+    return null;
+  }
+
   const averageItem = isManual
     ? calculateManualAverage(itemMap)
     : itemMap.Dコン;
@@ -1174,42 +1563,40 @@ function calculateSingleMode(
     networkTime
   );
 
-  // 99999個を集めるための理論上の時間
   const normalFullTime =
     (requiredItems / averageItem) *
     normalCycle.cycle -
     normalCycle.standby;
 
-  // イベント曲114回分の時間
   const eventFullTime = usedTime(
     eventFullCount,
     eventCycle
   );
 
-  // 1日分のシミュレーション
   const daily = simulateSinglePeriod(
-    86400,
+    MAX_DAILY_SECONDS,
     isManual,
     song,
     eventTime,
-    bonus,
     networkTime,
     itemMap,
+    bonusSchedule,
+    0,
     0
   );
 
-  // 225時間分のシミュレーション
   const projection = simulate225Hours(
-    (periodSeconds, startingItems) => {
+    (periodSeconds, startingItems, elapsedSeconds) => {
       return simulateSinglePeriod(
         periodSeconds,
         isManual,
         song,
         eventTime,
-        bonus,
         networkTime,
         itemMap,
-        startingItems
+        bonusSchedule,
+        startingItems,
+        elapsedSeconds
       );
     }
   );
@@ -1237,22 +1624,6 @@ function calculateSingleMode(
 }
 
 // ===================================
-// アイテム表示
-// ===================================
-
-function updateItemDisplay(result) {
-  const items = Math.floor(result.currentItems);
-
-  $("itemInventory").textContent =
-    `${items.toLocaleString()} 個`;
-
-  $("itemInventory").style.color =
-    items < 0 || items >= requiredItems
-      ? "#d00000"
-      : "#7926b9";
-}
-
-// ===================================
 // 混合モードのプレビュー
 // ===================================
 
@@ -1266,19 +1637,12 @@ function updateMixedPreview() {
   const result = calculateMixedMode(
     normalSongs[$("normalSong").selectedIndex],
     getEventInputTime(),
-    getBonus(),
     getNetworkTime(),
     getItemMap(),
     false
   );
 
-  if (!result) {
-    return;
-  }
-
   latestMixedResult = result;
-
-  updateItemDisplay(result);
 }
 
 // ===================================
@@ -1309,16 +1673,7 @@ function validateCommonInputs(mode) {
     }
   }
 
-  const bonusText = $("bonus").value;
-  const bonus = Number(bonusText);
-
-  if (
-    bonusText === "" ||
-    !Number.isInteger(bonus) ||
-    bonus < 0 ||
-    bonus > 9999
-  ) {
-    alert("特攻値は0～9999%で入力してください。");
+  if (!getBonusSchedule(true)) {
     return false;
   }
 
@@ -1326,12 +1681,12 @@ function validateCommonInputs(mode) {
 }
 
 function validateBgTimes() {
-  const totalMinutes =
-    getWheelMinutes("normalBg") +
-    getWheelMinutes("eventBg");
+  const totalSeconds =
+    getWheelSeconds("normalBg") +
+    getWheelSeconds("eventBg");
 
-  if (totalMinutes > 1440) {
-    alert("BG時間の合計は24時間以内にしてください。");
+  if (totalSeconds > MAX_DAILY_SECONDS) {
+    alert("バクグラ時間の合計は24時間以内にしてください。");
     return false;
   }
 
@@ -1367,7 +1722,7 @@ function showSingleResult(song, isManual, result) {
     song,
     isManual
       ? "フル手打ち"
-      : "フルバックグラウンド",
+      : "フルバクグラ",
     result
   );
 
@@ -1463,16 +1818,13 @@ function runCalculation() {
 
   const song = normalSongs[$("normalSong").selectedIndex];
   const eventTime = getEventInputTime();
-  const bonus = getBonus();
   const networkTime = getNetworkTime();
   const itemMap = getItemMap();
 
   if (mode === "both") {
-    // 24時間分の計算
     const result = calculateMixedMode(
       song,
       eventTime,
-      bonus,
       networkTime,
       itemMap
     );
@@ -1481,21 +1833,28 @@ function runCalculation() {
       return;
     }
 
-    // 225時間分の計算
     const projection = simulate225Hours(
-      (periodSeconds, startingItems) => {
+      (periodSeconds, startingItems, elapsedSeconds) => {
         return calculateMixedMode(
           song,
           eventTime,
-          bonus,
           networkTime,
           itemMap,
           false,
           periodSeconds,
-          startingItems
+          startingItems,
+          elapsedSeconds
         );
       }
     );
+
+    if (!projection.completed) {
+      alert(
+        "アイテム上限またはアイテム不足の問題が発生しました。\n\nバクグラ時間や精度設定を調整してください。"
+      );
+
+      return;
+    }
 
     result.projectedEventRuns =
       projection.eventRuns;
@@ -1514,7 +1873,6 @@ function runCalculation() {
       isManual,
       song,
       eventTime,
-      bonus,
       networkTime,
       itemMap
     );
@@ -1526,7 +1884,7 @@ function runCalculation() {
     showSingleResult(song, isManual, result);
   }
 
-  switchTab("result");
+  showScreen("result");
 }
 
 $("calc").addEventListener("click", runCalculation);
@@ -1534,8 +1892,6 @@ $("calc").addEventListener("click", runCalculation);
 // ===================================
 // ホイール設定
 // ===================================
-
-const WHEEL_ROW_HEIGHT = 40;
 
 function renderWheel(key, unit, maxValue, selectedValue) {
   const wheel = $(`${key}${unit}Wheel`);
@@ -1598,105 +1954,120 @@ function updateWheelHighlight(wheel) {
 // BG時間の上限
 // ===================================
 
-function getWheelMaxMinutes(key) {
-  const song = normalSongs[$("normalSong").selectedIndex];
-  const itemMap = getItemMap();
-  const networkTime = getNetworkTime();
-
-  let laneMax;
-
-  if (key === "normalBg") {
-    const cycle = getCycleTime(
-      song.time,
-      false,
-      false,
-      networkTime
-    );
-
-    const maxRuns = Math.floor(
-      requiredItems / itemMap.Dコン
-    );
-
-    laneMax = Math.floor(
-      usedTime(maxRuns, cycle) / 60
-    );
-
-  } else {
-    const eventTime = getEventInputTime();
-
-    if (eventTime <= 0) {
-      return 0;
-    }
-
-    const cycle = getCycleTime(
-      eventTime,
-      false,
-      true,
-      networkTime
-    );
-
-    laneMax = Math.floor(
-      usedTime(eventFullCount, cycle) / 60
-    );
-  }
-
+function getWheelMaxSeconds(key) {
   const otherKey =
     key === "normalBg"
       ? "eventBg"
       : "normalBg";
 
-  const otherMinutes =
-    wheelState[otherKey]?.minutes || 0;
+  const otherSeconds =
+    wheelState[otherKey]?.seconds || 0;
+
+  if (
+    key === "eventBg" &&
+    getEventInputTime() <= 0
+  ) {
+    return 0;
+  }
 
   return Math.max(
     0,
-    Math.min(
-      laneMax,
-      1440 - otherMinutes
-    )
+    MAX_DAILY_SECONDS - otherSeconds
   );
+}
+
+// ===================================
+// ダイヤルの最大値を取得
+// ===================================
+
+function getWheelUnitMax(key, unit) {
+  const maxSeconds = getWheelMaxSeconds(key);
+  const current = wheelState[key];
+
+  if (unit === "Hour") {
+    return Math.floor(maxSeconds / 3600);
+  }
+
+  if (unit === "Min") {
+    if (current.hour * 3600 > maxSeconds) {
+      return 0;
+    }
+
+    const remaining =
+      maxSeconds - current.hour * 3600;
+
+    return Math.min(
+      59,
+      Math.floor(remaining / 60)
+    );
+  }
+
+  if (unit === "Sec") {
+    const used =
+      current.hour * 3600 +
+      current.minute * 60;
+
+    if (used > maxSeconds) {
+      return 0;
+    }
+
+    return Math.min(
+      59,
+      maxSeconds - used
+    );
+  }
+
+  return 0;
 }
 
 // ===================================
 // ホイール値設定
 // ===================================
 
-function setWheelValue(key, totalMinutes) {
-  const hour = Math.floor(totalMinutes / 60);
-  const minute = totalMinutes % 60;
+function setWheelValue(key, totalSeconds) {
+  totalSeconds = Math.max(
+    0,
+    Math.floor(totalSeconds || 0)
+  );
+
+  const maxSeconds = getWheelMaxSeconds(key);
+
+  totalSeconds = Math.min(
+    totalSeconds,
+    maxSeconds
+  );
+
+  const hour = Math.floor(totalSeconds / 3600);
+  const minute = Math.floor((totalSeconds % 3600) / 60);
+  const second = totalSeconds % 60;
 
   wheelState[key] = {
-    minutes: totalMinutes,
+    seconds: totalSeconds,
     hour,
-    minute
+    minute,
+    second
   };
 
   renderWheel(
     key,
     "Hour",
-    Math.floor(getWheelMaxMinutes(key) / 60),
+    getWheelUnitMax(key, "Hour"),
     hour
   );
-
-  const maxMinutes = getWheelMaxMinutes(key);
-
-  const maxMinute =
-    hour === Math.floor(maxMinutes / 60)
-      ? maxMinutes % 60
-      : 59;
 
   renderWheel(
     key,
     "Min",
-    maxMinute,
-    Math.min(minute, maxMinute)
+    getWheelUnitMax(key, "Min"),
+    minute
   );
 
-  wheelState[key].minutes =
-    hour * 60 + Math.min(minute, maxMinute);
-
-  wheelState[key].minute =
-    Math.min(minute, maxMinute);
+  renderWheel(
+    key,
+    "Sec",
+    getWheelUnitMax(key, "Sec"),
+    second
+  );
 
   updateDailyTimeTotal();
 }
@@ -1705,58 +2076,88 @@ function setWheelValue(key, totalMinutes) {
 // ホイール上限更新
 // ===================================
 
-function refreshWheelLimits(changedKey = null) {
+function refreshWheelLimits() {
   ["normalBg", "eventBg"].forEach(key => {
-    const current =
-      wheelState[key]?.minutes || 0;
+    let seconds =
+      wheelState[key]?.seconds || 0;
 
-    const max = getWheelMaxMinutes(key);
+    const maxSeconds = getWheelMaxSeconds(key);
 
-    if (current > max) {
-      wheelState[key].minutes = max;
-    }
+    seconds = Math.min(
+      seconds,
+      maxSeconds
+    );
 
-    const minutes =
-      wheelState[key].minutes || 0;
-
-    const hour = Math.floor(minutes / 60);
-    const minute = minutes % 60;
+    const hour = Math.floor(seconds / 3600);
+    const minute = Math.floor((seconds % 3600) / 60);
+    const second = seconds % 60;
 
     wheelState[key] = {
-      minutes,
+      seconds,
       hour,
-      minute
+      minute,
+      second
     };
 
     renderWheel(
       key,
       "Hour",
-      Math.floor(getWheelMaxMinutes(key) / 60),
+      getWheelUnitMax(key, "Hour"),
       hour
     );
-
-    const maxMinutes = getWheelMaxMinutes(key);
-
-    const maxMinute =
-      hour === Math.floor(maxMinutes / 60)
-        ? maxMinutes % 60
-        : 59;
 
     renderWheel(
       key,
       "Min",
-      maxMinute,
-      Math.min(minute, maxMinute)
+      getWheelUnitMax(key, "Min"),
+      minute
     );
 
-    wheelState[key].minute =
-      Math.min(minute, maxMinute);
-
-    wheelState[key].minutes =
-      hour * 60 + wheelState[key].minute;
+    renderWheel(
+      key,
+      "Sec",
+      getWheelUnitMax(key, "Sec"),
+      second
+    );
   });
 
   updateDailyTimeTotal();
+}
+
+// ===================================
+// ホイールの値を更新
+// ===================================
+
+function updateWheelValueFromScroll(key, unit, value) {
+  const current = wheelState[key];
+
+  let hour = current.hour;
+  let minute = current.minute;
+  let second = current.second;
+
+  if (unit === "Hour") {
+    hour = value;
+  } else if (unit === "Min") {
+    minute = value;
+  } else if (unit === "Sec") {
+    second = value;
+  }
+
+  let totalSeconds =
+    hour * 3600 +
+    minute * 60 +
+    second;
+
+  const maxSeconds = getWheelMaxSeconds(key);
+
+  totalSeconds = Math.min(
+    totalSeconds,
+    maxSeconds
+  );
+
+  setWheelValue(key, totalSeconds);
+
+  refreshWheelLimits();
 }
 
 // ===================================
@@ -1764,14 +2165,12 @@ function refreshWheelLimits(changedKey = null) {
 // ===================================
 
 ["normalBg", "eventBg"].forEach(key => {
-  wheelState[key] = {
-    minutes: 0,
-    hour: 0,
-    minute: 0
-  };
-
-  ["Hour", "Min"].forEach(unit => {
+  ["Hour", "Min", "Sec"].forEach(unit => {
     const wheel = $(`${key}${unit}Wheel`);
+
+    if (!wheel) {
+      return;
+    }
 
     let scrollTimer;
 
@@ -1781,35 +2180,15 @@ function refreshWheelLimits(changedKey = null) {
       scrollTimer = setTimeout(() => {
         const value = updateWheelHighlight(wheel);
 
-        const current = wheelState[key];
-
-        let minutes = unit === "Hour"
-          ? value * 60 + current.minute
-          : current.hour * 60 + value;
-
-        const max = getWheelMaxMinutes(key);
-
-        const otherKey =
-          key === "normalBg"
-            ? "eventBg"
-            : "normalBg";
-
-        minutes = Math.min(
-          minutes,
-          max,
-          1440 - wheelState[otherKey].minutes
+        updateWheelValueFromScroll(
+          key,
+          unit,
+          value
         );
-
-        wheelState[key] = {
-          minutes,
-          hour: Math.floor(minutes / 60),
-          minute: minutes % 60
-        };
-
-        refreshWheelLimits(key);
 
         if (
           getEventInputTime() <= 0 &&
+          getSelectedPlayMode() === "both" &&
           !eventTimeAlertActive
         ) {
           eventTimeAlertActive = true;
@@ -1832,6 +2211,8 @@ function refreshWheelLimits(changedKey = null) {
 // ===================================
 
 function initializeWheels() {
+  setWheelValue("normalBg", 0);
+  setWheelValue("eventBg", 0);
   refreshWheelLimits();
 }
 
@@ -1857,6 +2238,7 @@ initializeWheels();
       alert(
         "イベント曲の時間が未入力です。イベント曲の時間を入力してください。"
       );
+      showScreen("settings");
     }
 
     refreshWheelLimits();
@@ -1909,5 +2291,8 @@ $("eventMin").addEventListener("change", () => {
 // 初期表示
 // ===================================
 
+showScreen("settings");
+
 updatePlayMode();
 updateDailyTimeTotal();
+updateBonusChangePoints();
