@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -12,7 +13,7 @@
 
   <header class="title-banner">
     <h1>乃木フェス計算ツール</h1>
-    <button id="openSettings" type="button">⚙ 設定</button>
+    <button id="openSettings" type="button">設定</button>
   </header>
 
   <!-- =========================
@@ -24,28 +25,41 @@
       <h2 class="panel-title">プレイ方法</h2>
       <div class="panel-content mode-options">
         <label>
-          <input type="radio" name="playMode" value="fullManual" checked>
-          理論値／フルバクグラ
-        </label>
-        <label>
-          <input type="radio" name="playMode" value="both">
-          手打ち＆バクグラ
-        </label>
+  <input type="radio" name="playMode" value="fullManual">
+  理論値／フルバクグラ
+</label>
+
+<label>
+  <input type="radio" name="playMode" value="both" checked>
+  手打ち＆バクグラ
+</label>
       </div>
     </section>
 
     <section id="networkArea" class="network-area">
       <h3>回線速度</h3>
-      <div class="network-options">
-        <label><input type="radio" name="networkSpeed" value="24" checked> 速い（24秒）</label>
-        <label><input type="radio" name="networkSpeed" value="26"> 普通（26秒）</label>
-        <label><input type="radio" name="networkSpeed" value="28"> 遅い（28秒）</label>
-      </div>
+<div class="network-options">
+  <label class="network-fast">
+    <input type="radio" name="network" value="24">
+    速い
+  </label>
+
+  <label class="network-normal">
+    <input type="radio" name="network" value="26" checked>
+    普通
+  </label>
+
+  <label class="network-slow">
+    <input type="radio" name="network" value="28">
+    遅い
+  </label>
+</div>
     </section>
 
     <section class="panel">
       <h2 class="panel-title">通常曲</h2>
       <div class="panel-content">
+
         <label class="field-label" for="normalSong">曲選択</label>
         <select id="normalSong"></select>
 
@@ -54,70 +68,90 @@
           <input type="number" id="normalMin" readonly> 分
           <input type="number" id="normalSec" readonly> 秒
         </div>
+
       </div>
     </section>
 
     <section class="panel">
-  <h2 class="panel-title">イベント曲</h2>
-  <div class="panel-content">
+      <h2 class="panel-title">イベント曲</h2>
+      <div class="panel-content">
 
-    <label class="field-label">曲時間</label>
-    <div class="time-inputs event-time">
-      <input type="number" id="eventMin" min="0" max="999"
-        placeholder="分" inputmode="numeric">
-      <span>分</span>
-      <input type="number" id="eventSec" min="0" max="59"
-        placeholder="秒" inputmode="numeric">
-      <span>秒</span>
-    </div>
+        <label class="field-label">曲時間：</label>
 
-<!-- 特攻値設定 -->
-<section class="bonus-settings">
+        <div class="time-inputs event-time">
+          <input
+            type="number"
+            id="eventMin"
+            min="0"
+            max="999"
+            placeholder="分"
+            inputmode="numeric"
+          >
+          <span>分</span>
 
-  <h3 class="bonus-settings-title">特攻値設定</h3>
+          <input
+            type="number"
+            id="eventSec"
+            min="0"
+            max="59"
+            placeholder="秒"
+            inputmode="numeric"
+          >
+          <span>秒</span>
+        </div>
 
-  <!-- 初期特攻値 -->
-  <div class="bonus-row initial-bonus-row">
+        <!-- 特攻値設定 -->
+        <section class="bonus-settings">
 
-    <div class="bonus-input">
-      <label for="bonus">初期特攻値</label>
+          <h3 class="bonus-settings-title">特攻値設定</h3>
 
-      <div class="bonus-input-unit">
-        <input type="number"
-          id="bonus"
-          min="0"
-          max="9999"
-          value="0"
-          inputmode="numeric">
-        <span>%</span>
+          <!-- 初期特攻値 -->
+          <div class="bonus-row initial-bonus-row">
+
+            <div class="bonus-input">
+              <label for="bonus">初期特攻値</label>
+
+              <div class="bonus-input-unit">
+                <input
+                  type="number"
+                  id="bonus"
+                  min="0"
+                  max="9999"
+                  value="0"
+                  inputmode="numeric"
+                >
+                <span>%</span>
+              </div>
+            </div>
+
+            <div class="event-point">
+              <label>イベントPT</label>
+              <output id="eventPoint">pt</output>
+            </div>
+
+          </div>
+
+          <!-- 追加した特攻値 -->
+          <div id="bonusChanges"></div>
+
+          <!-- 変更追加ボタン -->
+          <button
+            id="addBonusChange"
+            class="add-bonus-button"
+            type="button"
+          >
+            特攻値変更
+          </button>
+
+        </section>
+
       </div>
-    </div>
-
-    <div class="event-point">
-      <label>イベントPT</label>
-      <output id="eventPoint">pt</output>
-    </div>
-
-  </div>
-
-  <!-- 追加した特攻値 -->
-  <div id="bonusChanges"></div>
-
-  <!-- 変更追加ボタン -->
-  <button id="addBonusChange"
-    class="add-bonus-button"
-    type="button">
-    ＋ 変更を追加
-  </button>
-
-</section>
-
-  </div>
-</section>
+    </section>
 
     <button id="saveSettings" class="calc-button" type="button">
       設定を保存
     </button>
+
   </section>
 
 
@@ -130,108 +164,142 @@
       <h2 class="panel-title">プレイ方法</h2>
 
       <div class="panel-content toggle-row">
-        <button id="manualModeButton" class="toggle-button active"
-          type="button" aria-pressed="true">
+
+        <button
+          id="manualModeButton"
+          class="toggle-button active"
+          type="button"
+          aria-pressed="true"
+        >
           フル手打ち
         </button>
 
-        <button id="backgroundModeButton" class="toggle-button"
-          type="button" aria-pressed="false">
+        <button
+          id="backgroundModeButton"
+          class="toggle-button"
+          type="button"
+          aria-pressed="false"
+        >
           フルバクグラ
         </button>
+
       </div>
     </section>
 
     <section id="accuracyArea" class="panel accuracy-panel">
       <h2 class="panel-title">精度</h2>
+
       <div class="accuracy-grid">
-        <div class="accuracy-item"><label for="フルエク">フルエク</label><select id="フルエク"></select></div>
-        <div class="accuracy-item"><label for="フルコン">フルコン</label><select id="フルコン"></select></div>
-        <div class="accuracy-item"><label for="Aコン">Aコン</label><select id="Aコン"></select></div>
-        <div class="accuracy-item"><label for="Bコン">Bコン</label><select id="Bコン"></select></div>
-        <div class="accuracy-item"><label for="Cコン">Cコン</label><select id="Cコン"></select></div>
-        <div class="accuracy-item"><label for="Dコン">Dコン</label><select id="Dコン"></select></div>
+        <div class="accuracy-item">
+          <label for="フルエク">フルエク</label>
+          <select id="フルエク"></select>
+        </div>
+
+        <div class="accuracy-item">
+          <label for="フルコン">フルコン</label>
+          <select id="フルコン"></select>
+        </div>
+
+        <div class="accuracy-item">
+          <label for="Aコン">Aコン</label>
+          <select id="Aコン"></select>
+        </div>
+
+        <div class="accuracy-item">
+          <label for="Bコン">Bコン</label>
+          <select id="Bコン"></select>
+        </div>
+
+        <div class="accuracy-item">
+          <label for="Cコン">Cコン</label>
+          <select id="Cコン"></select>
+        </div>
+
+        <div class="accuracy-item">
+          <label for="Dコン">Dコン</label>
+          <select id="Dコン"></select>
+        </div>
       </div>
     </section>
 
 
-<section id="mixedTimeArea" class="panel mixed-panel" hidden>
+    <!-- 混合モード -->
+    <section id="mixedTimeArea" class="panel mixed-panel" hidden>
 
-  <h2 class="panel-title">1日あたりのバックグラウンド時間</h2>
+      <h2 class="panel-title">1日あたりのバックグラウンド時間</h2>
 
-  <div class="mixed-grid">
+      <div class="mixed-grid">
 
-    <!-- 通常曲BG -->
+        <!-- 通常曲BG -->
+        <div class="mixed-time-card normal-time-card">
 
-    <div class="mixed-time-card">
+          <h3>通常曲/バックグラウンド</h3>
 
-      <h3>通常曲/バックグラウンド</h3>
+          <div class="dial-time">
 
-      <div class="dial-time">
+            <div class="wheel-column">
+              <div class="wheel-label">時間</div>
+              <div id="normalBgHourWheel" class="wheel"></div>
+            </div>
 
-        <div class="wheel-column">
-          <div class="wheel-label">時間</div>
-          <div id="normalBgHourWheel" class="wheel"></div>
+            <div class="wheel-column">
+              <div class="wheel-label">分</div>
+              <div id="normalBgMinWheel" class="wheel"></div>
+            </div>
+
+            <div class="wheel-column">
+              <div class="wheel-label">秒</div>
+              <div id="normalBgSecWheel" class="wheel"></div>
+            </div>
+
+          </div>
+
         </div>
 
-        <div class="wheel-column">
-          <div class="wheel-label">分</div>
-          <div id="normalBgMinWheel" class="wheel"></div>
-        </div>
 
-        <div class="wheel-column">
-          <div class="wheel-label">秒</div>
-          <div id="normalBgSecWheel" class="wheel"></div>
+        <!-- イベント曲BG -->
+        <div class="mixed-time-card event-time-card">
+
+          <h3>イベント曲/バックグラウンド</h3>
+
+          <div class="dial-time">
+
+            <div class="wheel-column">
+              <div class="wheel-label">時間</div>
+              <div id="eventBgHourWheel" class="wheel"></div>
+            </div>
+
+            <div class="wheel-column">
+              <div class="wheel-label">分</div>
+              <div id="eventBgMinWheel" class="wheel"></div>
+            </div>
+
+            <div class="wheel-column">
+              <div class="wheel-label">秒</div>
+              <div id="eventBgSecWheel" class="wheel"></div>
+            </div>
+
+          </div>
+
         </div>
 
       </div>
 
-    </div>
+      <p id="dailyTimeTotal" class="daily-total">
+        バクグラ合計：0時間 0分 / 24時間
+      </p>
 
+      <p class="time-note">
+        残り時間は手打ちに自動配分し、イベントptが最大になる組み合わせ探索します。
+      </p>
 
-    <!-- イベント曲BG -->
-
-    <div class="mixed-time-card">
-
-      <h3>イベント曲/バクグラ</h3>
-
-      <div class="dial-time">
-
-        <div class="wheel-column">
-          <div class="wheel-label">時間</div>
-          <div id="eventBgHourWheel" class="wheel"></div>
-        </div>
-
-        <div class="wheel-column">
-          <div class="wheel-label">分</div>
-          <div id="eventBgMinWheel" class="wheel"></div>
-        </div>
-
-        <div class="wheel-column">
-          <div class="wheel-label">秒</div>
-          <div id="eventBgSecWheel" class="wheel"></div>
-        </div>
-
-      </div>
-
-    </div>
-
-  </div>
-
-  <p id="dailyTimeTotal" class="daily-total">
-    バクグラ合計：0時間 0分 / 24時間
-  </p>
-
-  <p class="time-note">
-    残り時間は手打ちに自動配分し、イベントptが最大になる組み合わせ探索します。
-  </p>
-
-</section>
+    </section>
 
 
     <button id="calc" class="calc-button" type="button">
       計測
     </button>
+
   </section>
 
 
@@ -244,15 +312,39 @@
       <h2 class="panel-title">Result</h2>
 
       <div class="result-content">
+
         <div class="result-summary">
-          <div class="summary-item"><span>選択曲</span><strong id="resultSong">-</strong></div>
-          <div class="summary-item"><span>プレイ方法</span><strong id="resultMode">-</strong></div>
-          <div class="summary-item"><span>平均アイテム数</span><strong id="resultAverage">0.00 個</strong></div>
-          <div class="summary-item"><span>通常曲フル時間</span><strong id="resultNormalTime">0時間 0分 0秒</strong></div>
-          <div class="summary-item"><span>イベント曲フル時間</span><strong id="resultEventTime">0時間 0分 0秒</strong></div>
+
+          <div class="summary-item">
+            <span>選択曲</span>
+            <strong id="resultSong">-</strong>
+          </div>
+
+          <div class="summary-item">
+            <span>プレイ方法</span>
+            <strong id="resultMode">-</strong>
+          </div>
+
+          <div class="summary-item">
+            <span>平均アイテム数</span>
+            <strong id="resultAverage">0.00 個</strong>
+          </div>
+
+          <div class="summary-item">
+            <span>通常曲フル時間</span>
+            <strong id="resultNormalTime">0時間 0分 0秒</strong>
+          </div>
+
+          <div class="summary-item">
+            <span>イベント曲フル時間</span>
+            <strong id="resultEventTime">0時間 0分 0秒</strong>
+          </div>
+
         </div>
 
+
         <div class="result-bottom">
+
           <div class="result-card">
             <h3>1日換算</h3>
             <p>通常曲獲得アイテム：<strong id="resultDailyItems">0</strong> 個</p>
@@ -265,9 +357,12 @@
             <p>イベント曲プレイ数：<strong id="result225Set">0.00</strong> 回</p>
             <p>推定イベント全体pt：<strong id="result225Point">0</strong> pt</p>
           </div>
+
         </div>
 
+
         <div id="mixedBreakdown" class="result-bottom" hidden>
+
           <div class="result-card">
             <h3>通常曲の内訳（1日）</h3>
             <p>手打ち：<strong id="resultManualNormalRuns">0</strong> 回</p>
@@ -285,13 +380,17 @@
             <p>バクグラ獲得pt：<strong id="resultBgEventPoints">0</strong> pt</p>
             <p>イベント曲手打ち時間：<strong id="resultManualEventTime">0</strong></p>
           </div>
+
         </div>
+
       </div>
     </section>
+
 
     <button id="backToPlay" class="secondary-button" type="button">
       トップ画面へ戻る
     </button>
+
   </section>
 
 </main>
