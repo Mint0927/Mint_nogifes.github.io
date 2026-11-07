@@ -116,7 +116,7 @@ function getSelectedPlayMode() {
 function getNetworkTime() {
   return Number(
     document.querySelector(
-      'input[name="networkSpeed"]:checked'
+      'input[name="network"]:checked'
     ).value
   );
 }
@@ -461,9 +461,9 @@ function showMixedCalculationError(errors) {
   }
 
   alert(
-    "設定したBG時間では計算できません。\n\n" +
+    "設定したバクグラ時間では計算できません。\n\n" +
     messages.join("\n") +
-    "\n\nBG時間を調整してください。"
+    "\n\nバクグラ時間を調整してください。"
   );
 }
 
@@ -772,7 +772,7 @@ function updateDailyTimeTotal() {
     times.normalBg + times.eventBg;
 
   $("dailyTimeTotal").textContent =
-    `BG合計：${secToTime(totalSeconds)} / 24時間`;
+    `合計：${secToTime(totalSeconds)} / 24時間`;
 
   $("dailyTimeTotal").style.color =
     totalSeconds > MAX_DAILY_SECONDS
@@ -2216,6 +2216,16 @@ function initializeWheels() {
 
 initializeWheels();
 
+
+function showScreen(name) {
+  $("settingsScreen").hidden = name !== "settings";
+  $("playScreen").hidden = name !== "play";
+  $("resultScreen").hidden = name !== "result";
+
+  // 設定画面では設定ボタンを非表示
+  $("openSettings").hidden = name === "settings";
+}
+
 // ===================================
 // イベント曲時間変更
 // ===================================
@@ -2260,7 +2270,7 @@ $("normalSong").addEventListener("change", () => {
 // 通信速度変更
 // ===================================
 
-document.querySelectorAll('input[name="networkSpeed"]').forEach(input => {
+document.querySelectorAll('input[name="network"]').forEach(input => {
   input.addEventListener("change", () => {
     refreshWheelLimits();
     resetResult();
