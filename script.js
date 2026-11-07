@@ -15,7 +15,7 @@ const normalSongs = [
   { name: "サヨナラの意味 向井葉月セレモニー", time: 213, lp: 81 },
   { name: "あと7曲", time: 213, lp: 81 },
   { name: "三番目の風", time: 214, lp: 81 },
-  { name: "渋谷ブルース", time: 200, lp: 75 }
+  { name: "渋谷ブルース", time: 197, lp: 75 }
 ];
 
 const accuracyIds = [
