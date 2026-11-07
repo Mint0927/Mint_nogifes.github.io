@@ -244,7 +244,6 @@ function addBonusChangeRow() {
 // ===================================
 
 $("addBonusChange").addEventListener("click", () => {
-  alert("追加ボタンのクリックを検知しました");
   addBonusChangeRow();
 });
 
@@ -483,7 +482,6 @@ $("openSettings").addEventListener("click", () => {
 });
 
 $("saveSettings").addEventListener("click", () => {
-  alert("保存ボタンのクリックを検知しました");
   showScreen("play");
   updatePlayMode();
   refreshWheelLimits();
