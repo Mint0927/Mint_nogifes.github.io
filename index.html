@@ -21,6 +21,49 @@
   ========================== -->
   <section id="settingsScreen" class="screen">
 
+        <!-- =========================
+         イベント日程設定
+    ========================== -->
+    <section class="panel">
+      <h2 class="panel-title">イベント日程</h2>
+
+      <div class="panel-content">
+
+        <!-- イベント開始日 -->
+        <div class="event-schedule-row">
+          <label class="field-label" for="eventStartDate">
+            イベント開始日
+          </label>
+
+          <input
+            type="date"
+            id="eventStartDate"
+          >
+        </div>
+
+        <!-- イベント日数 -->
+        <div class="event-schedule-row">
+          <label class="field-label" for="eventDays">
+            イベント日数
+          </label>
+
+          <select id="eventDays">
+            <option value="1">1日間</option>
+            <option value="2">2日間</option>
+            <option value="3">3日間</option>
+            <option value="4">4日間</option>
+            <option value="5" selected>5日間</option>
+            <option value="6">6日間</option>
+            <option value="7">7日間</option>
+            <option value="8">8日間</option>
+            <option value="9">9日間</option>
+            <option value="10">10日間</option>
+          </select>
+        </div>
+
+      </div>
+    </section>
+
     <section class="panel">
       <h2 class="panel-title">プレイ方法</h2>
       <div class="panel-content mode-options">
@@ -148,6 +191,8 @@
       </div>
     </section>
 
+
+
     <button id="saveSettings" class="calc-button" type="button">
       設定を保存
     </button>
@@ -158,7 +203,20 @@
   <!-- =========================
        プレイ画面
   ========================== -->
-  <section id="playScreen" class="screen" hidden>
+
+<section id="playScreen" class="screen" hidden>
+
+  <!-- 混合モード専用の日付設定 -->
+  <div id="mixedDaySettings">
+
+    <!-- イベント日付タブ -->
+    <div id="eventDateTabs" class="event-date-tabs"></div>
+
+    <!-- 日付ごとの設定 -->
+    <div id="eventDaySettings" class="event-day-settings"></div>
+
+  </div>
+
 
     <section id="fullModeArea" class="panel">
       <h2 class="panel-title">プレイ方法</h2>
@@ -228,72 +286,106 @@
 
       <h2 class="panel-title">1日あたりのバックグラウンド時間</h2>
 
-      <div class="mixed-grid">
+<div class="mixed-grid">
 
-        <!-- 通常曲BG -->
-        <div class="mixed-time-card normal-time-card">
+  <!-- 通常曲BG -->
+  <div class="mixed-time-card normal-time-card">
 
-          <h3>通常曲/バックグラウンド</h3>
+    <h3>通常曲/バックグラウンド</h3>
 
-          <div class="dial-time">
+    <button
+      id="openNormalBgTime"
+      class="time-open-button"
+      type="button"
+    >
+      <span class="time-open-label">設定時間</span>
+      <strong id="normalBgTimeText">0時間 0分 0秒</strong>
+      <span class="time-open-note">タップして変更</span>
+    </button>
 
-            <div class="wheel-column">
-              <div class="wheel-label">時間</div>
-              <div id="normalBgHourWheel" class="wheel"></div>
-            </div>
+  </div>
 
-            <div class="wheel-column">
-              <div class="wheel-label">分</div>
-              <div id="normalBgMinWheel" class="wheel"></div>
-            </div>
+  <!-- イベント曲BG -->
+  <div class="mixed-time-card event-time-card">
 
-            <div class="wheel-column">
-              <div class="wheel-label">秒</div>
-              <div id="normalBgSecWheel" class="wheel"></div>
-            </div>
+    <h3>イベント曲/バックグラウンド</h3>
 
-          </div>
+    <button
+      id="openEventBgTime"
+      class="time-open-button"
+      type="button"
+    >
+      <span class="time-open-label">設定時間</span>
+      <strong id="eventBgTimeText">0時間 0分 0秒</strong>
+      <span class="time-open-note">タップして変更</span>
+    </button>
 
-        </div>
+  </div>
 
-
-        <!-- イベント曲BG -->
-        <div class="mixed-time-card event-time-card">
-
-          <h3>イベント曲/バックグラウンド</h3>
-
-          <div class="dial-time">
-
-            <div class="wheel-column">
-              <div class="wheel-label">時間</div>
-              <div id="eventBgHourWheel" class="wheel"></div>
-            </div>
-
-            <div class="wheel-column">
-              <div class="wheel-label">分</div>
-              <div id="eventBgMinWheel" class="wheel"></div>
-            </div>
-
-            <div class="wheel-column">
-              <div class="wheel-label">秒</div>
-              <div id="eventBgSecWheel" class="wheel"></div>
-            </div>
-
-          </div>
-
-        </div>
-
-      </div>
+</div>
 
       <p id="dailyTimeTotal" class="daily-total">
         バクグラ合計：0時間 0分 / 24時間
       </p>
+
+      <div id="dailyCheckStatus"
+     class="daily-check-status"
+     role="status"
+     aria-live="polite"
+     hidden>
+</div>
 
       <p class="time-note">
         残り時間は手打ちに自動配分し、イベントptが最大になる組み合わせ探索します。
       </p>
 
     </section>
+
+    <!-- =========================
+     共通時間設定ダイアログ
+========================== -->
+
+<div id="timeDialogOverlay" class="time-dialog-overlay" hidden>
+
+  <section
+    class="time-dialog"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="timeDialogTitle"
+  >
+
+    <h2 id="timeDialogTitle">時間設定</h2>
+
+    <div class="dial-time">
+
+      <div class="wheel-column">
+        <div class="wheel-label">時間</div>
+        <div id="dialogHourWheel" class="wheel" tabindex="0"></div>
+      </div>
+
+      <div class="wheel-column">
+        <div class="wheel-label">分</div>
+        <div id="dialogMinWheel" class="wheel" tabindex="0"></div>
+      </div>
+
+      <div class="wheel-column">
+        <div class="wheel-label">秒</div>
+        <div id="dialogSecWheel" class="wheel" tabindex="0"></div>
+      </div>
+
+    </div>
+
+    <button
+      id="confirmTimeDialog"
+      class="calc-button"
+      type="button"
+    >
+      決定
+    </button>
+
+  </section>
+
+</div>
 
 
     <button id="calc" class="calc-button" type="button">
@@ -302,13 +394,81 @@
 
   </section>
 
+</section>
 
-  <!-- =========================
-       Result画面
-  ========================== -->
-  <section id="resultScreen" class="screen" hidden>
 
-    <section id="results" class="panel result-panel">
+<!-- Result画面 -->
+<section id="resultScreen" class="screen" hidden>
+    <!-- イベント総合結果 -->
+<div id="eventSummaryResult" class="event-summary-result" hidden>
+  <h2 class="panel-title">Result</h2>
+
+  <!-- 総合獲得ポイント -->
+  <section class="result-total-card">
+    <p>イベント総合獲得ポイント</p>
+    <div class="result-total-value">
+      <span id="eventTotalPoints">0</span>
+      <span class="result-total-unit">pt</span>
+    </div>
+    <p id="eventTotalDays" class="result-total-period"></p>
+  </section>
+
+  <!-- 日別ポイントグラフ -->
+  <section class="result-daily-panel">
+    <h2 class="result-daily-title">日別獲得ptグラフ</h2>
+
+    <div class="daily-chart-scroll">
+  <div id="dailyPointChart" class="daily-point-chart"></div>
+</div>
+  </section>
+
+  <!-- 日別詳細 -->
+  <section class="result-daily-panel">
+    <h2 class="result-daily-title">イベント全日の日別結果</h2>
+
+    <div id="resultDayTabs" class="event-date-tabs result-day-tabs"></div>
+
+    <div class="result-day-card">
+      <h3 id="resultSelectedDay">1日目</h3>
+
+      <div class="result-day-grid">
+        <div class="result-day-item">
+          <span>通常曲BG時間</span>
+          <strong id="resultNormalBgTime">0時間0分0秒</strong>
+        </div>
+
+        <div class="result-day-item">
+          <span>イベント曲BG時間</span>
+          <strong id="resultEventBgTime">0時間0分0秒</strong>
+        </div>
+
+        <div class="result-day-item">
+          <span>獲得アイテム</span>
+          <strong>
+            <span id="resultEarnedItems">0</span> 個
+          </strong>
+        </div>
+
+        <div class="result-day-item">
+          <span>獲得pt</span>
+          <strong>
+            <span id="resultDailyPoints">0</span> pt
+          </strong>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<!-- 計算結果保持用（画面には表示しない） -->
+<div hidden>
+  <span id="resultDailyItems">0</span>
+  <span id="resultDailyEventRuns">0</span>
+  <span id="resultDayPoint">0</span>
+</div>
+
+    <section id="results" class="panel result-panel" hidden>
       <h2 class="panel-title">Result</h2>
 
         <!-- イベント推定全体pt -->
@@ -344,18 +504,6 @@
           <div class="summary-item">
             <span>イベント曲フル時間</span>
             <strong id="resultEventTime">0時間 0分 0秒</strong>
-          </div>
-
-        </div>
-
-
-        <div class="result-bottom">
-
-          <div class="result-card">
-            <h3>1日換算</h3>
-            <p>通常曲獲得アイテム：<strong id="resultDailyItems">0</strong> 個</p>
-            <p>イベント曲プレイ数：<strong id="resultDailyEventRuns">0.00</strong> 回</p>
-            <p>イベント獲得pt：<strong id="resultDayPoint">0</strong> pt</p>
           </div>
 
         </div>
