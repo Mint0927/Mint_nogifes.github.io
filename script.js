@@ -48,7 +48,9 @@ const itemMapLP75 = {
 // ===================================
 // 定数
 // ===================================
-
+const EVENT_START_HOUR = 15;
+const EVENT_DAY_SECONDS = 24 * 60 * 60;
+const EVENT_FIRST_DAY_SECONDS = 9 * 60 * 60;
 const standbyBackground = 15;
 const requiredItems = 99999;
 const eventFullCount = 114;
@@ -148,7 +150,7 @@ function resetResult() {
 // 変更時刻をイベント開始からの経過秒数に変換
 function getBonusChangeSeconds(day, hour, minute) {
   return (
-    (day - 1) * 86400 +
+    (day - 1) * EVENT_DAY_SECONDS +
     hour * 3600 +
     minute * 60
   );
@@ -382,7 +384,7 @@ function getBonusSchedule(showAlert = true) {
       minute
     );
 
-    if (seconds >= eventDurationHours * 3600) {
+    if (seconds < 0 || seconds >= getEventTotalSeconds()) {
       if (showAlert) {
         alert(
           "特攻値の変更時刻はイベント終了前に設定してください。"
@@ -481,11 +483,29 @@ $("openSettings").addEventListener("click", () => {
   showScreen("settings");
 });
 
+
 $("saveSettings").addEventListener("click", () => {
+  // 現在の日別設定を保存
+  saveCurrentDayInputs();
+
+  // イベント日程を作成
+  if (!createEventDateList()) {
+    return;
+  }
+
+  // 1日目を表示
+  selectedEventDayIndex = 0;
+  applyDayInputs(0);
+  renderEventDateTabs();
+
+  // ローカル保存
+  saveLocalData();
+
   showScreen("play");
   updatePlayMode();
   refreshWheelLimits();
 });
+
 
 $("backToPlay").addEventListener("click", () => {
   showScreen("play");
@@ -779,23 +799,6 @@ function updateDailyTimeTotal() {
       ? "#d00000"
       : "#7926b9";
 }
-// ===================================
-// BG時間ダイヤルの上限更新
-// ===================================
-
-function refreshWheelLimits() {
-  const maxSeconds = MAX_DAILY_SECONDS;
-
-  ["normalBg", "eventBg"].forEach(key => {
-    const state = wheelState[key];
-
-    if (state.seconds > maxSeconds) {
-      setWheelValue(key, maxSeconds);
-    }
-  });
-
-  updateDailyTimeTotal();
-}
 
 // ===================================
 // 混合モードシミュレーション
@@ -812,6 +815,7 @@ function simulateMixed(
   startingItems = 0,
   elapsedStartSeconds = 0
 ) {
+  const epsilon = 1e-7;
   const normalManualCycle = getCycleTime(
     song.time, true, false, networkTime
   );
@@ -869,7 +873,7 @@ function simulateMixed(
   let manualDailyPoint = 0;
   let bgDailyPoint = 0;
 
-  const epsilon = 1e-7;
+  //const epsilon = 1e-7;
 
   function pickLane(names) {
     const available = names
@@ -990,27 +994,35 @@ function simulateMixed(
   // 全レーンの実行状況
   const errors = [];
 
-  const pendingNormal = [
-    "normalManual",
-    "normalBg"
-  ].some(name => {
-    return lanes[name].runs < lanes[name].capacity;
-  });
 
-  const pendingEvent = [
-    "eventManual",
-    "eventBg"
-  ].some(name => {
-    return lanes[name].runs < lanes[name].capacity;
-  });
+//const epsilon = 1e-7;
 
-  if (pendingNormal) {
-    errors.push("limit");
-  }
+// BGは設定時間を厳守する
+const pendingNormalBg =
+  lanes.normalBg.runs < lanes.normalBg.capacity;
 
-  if (pendingEvent) {
-    errors.push("depletion");
-  }
+const pendingEventBg =
+  lanes.eventBg.runs < lanes.eventBg.capacity;
+
+// 手打ちは残り時間の範囲で最適化するため、
+// 最大回数までプレイできなくてもエラーにしない
+if (pendingNormalBg) {
+  errors.push("limit");
+}
+
+if (pendingEventBg) {
+  errors.push("depletion");
+}
+
+// 所持アイテムの範囲も確認
+if (currentItems < -epsilon) {
+  errors.push("depletion");
+}
+
+if (currentItems > requiredItems + epsilon) {
+  errors.push("limit");
+}
+
 
   const normalManualRuns = lanes.normalManual.runs;
   const normalBgRuns = lanes.normalBg.runs;
@@ -1075,9 +1087,10 @@ function simulateMixed(
   };
 }
 
-// ===================================
-// 混合モード計算
-// ===================================
+
+ // ===================================
+ // 混合モード計算
+ // ===================================
 
 function calculateMixedMode(
   song,
@@ -1090,30 +1103,22 @@ function calculateMixedMode(
   elapsedStartSeconds = 0
 ) {
   const bonusSchedule = getBonusSchedule(showAlert);
-
-  if (!bonusSchedule) {
-    return null;
-  }
+  if (!bonusSchedule) return null;
 
   const bgTimes = getBgTimes();
 
-  const ratio = periodSeconds / MAX_DAILY_SECONDS;
-
-  const normalBgTime =
-    bgTimes.normalBg * ratio;
-
+  const normalBgTime = bgTimes.normalBg;
   const eventBgTime = eventTime > 0
-    ? bgTimes.eventBg * ratio
+    ? bgTimes.eventBg
     : 0;
 
-  const bgTotal =
-    normalBgTime + eventBgTime;
+  const remaining =
+    periodSeconds - normalBgTime - eventBgTime;
 
-  if (bgTotal > periodSeconds + 1e-9) {
+  if (remaining < -1e-7) {
     if (showAlert) {
-      alert("バクグラ時間の合計が計算時間を超えています。");
+      alert("BG時間がプレイ可能時間を超えています。");
     }
-
     return null;
   }
 
@@ -1122,10 +1127,9 @@ function calculateMixedMode(
     showAlert
   );
 
-  if (averageManual === null) {
-    return null;
-  }
+  if (averageManual === null) return null;
 
+  // 1曲あたりの時間
   const normalManualCycle = getCycleTime(
     song.time, true, false, networkTime
   );
@@ -1142,6 +1146,7 @@ function calculateMixedMode(
     eventTime, false, true, networkTime
   );
 
+  // BGのプレイ可能回数
   const bgNormalCapacity = capacityFor(
     normalBgTime,
     normalBgCycle
@@ -1151,52 +1156,7 @@ function calculateMixedMode(
     ? capacityFor(eventBgTime, eventBgCycle)
     : 0;
 
-  const remaining = Math.max(
-    0,
-    periodSeconds - bgTotal
-  );
-
-  // イベント曲時間が未入力の場合
-  if (eventTime <= 0) {
-    const manualNormalCapacity = capacityFor(
-      remaining,
-      normalManualCycle
-    );
-
-    const result = simulateMixed(
-      song,
-      0,
-      networkTime,
-      itemMap,
-      {
-        normalManual: manualNormalCapacity,
-        normalBg: bgNormalCapacity,
-        eventManual: 0,
-        eventBg: 0
-      },
-      averageManual,
-      bonusSchedule,
-      startingItems,
-      elapsedStartSeconds
-    );
-
-    if (result.errors.length > 0) {
-      if (showAlert) {
-        showMixedCalculationError(result.errors);
-      }
-
-      return null;
-    }
-
-    result.optimizedManualNormalRuns =
-      result.normalManualRuns;
-
-    result.optimizedManualEventRuns = 0;
-
-    return result;
-  }
-
-  // 手打ち時間の配分を最適化
+  // 手打ち通常曲の最大回数
   const maxNormalManual = capacityFor(
     remaining,
     normalManualCycle
@@ -1220,49 +1180,96 @@ function calculateMixedMode(
       remaining - normalTime
     );
 
-    const eventManualCapacity = capacityFor(
-      timeLeft,
-      eventManualCycle
-    );
+    const maxEventByTime = eventTime > 0
+      ? capacityFor(timeLeft, eventManualCycle)
+      : 0;
 
-    const candidate = simulateMixed(
-      song,
-      eventTime,
-      networkTime,
-      itemMap,
-      {
-        normalManual: normalRuns,
-        normalBg: bgNormalCapacity,
-        eventManual: eventManualCapacity,
-        eventBg: bgEventCapacity
-      },
-      averageManual,
-      bonusSchedule,
-      startingItems,
-      elapsedStartSeconds
-    );
+    // その日に集められるアイテム
+    const availableItems =
+      startingItems +
+      normalRuns * averageManual +
+      bgNormalCapacity * itemMap.Dコン;
 
-    if (candidate.errors.length > 0) {
-      candidate.errors.forEach(error => {
-        failureErrors.add(error);
-      });
+    // BGイベント曲の必要アイテム
+    const requiredBgItems =
+      bgEventCapacity * itemsPerEventSong;
 
+    const remainingItems =
+      availableItems - requiredBgItems;
+
+    if (remainingItems < -1e-7) {
+      failureErrors.add("depletion");
       continue;
     }
 
-    if (
-      !best ||
-      candidate.dailyPoint > best.dailyPoint ||
-      (
-        candidate.dailyPoint === best.dailyPoint &&
-        candidate.currentItems > best.currentItems
-      )
+    const maxEventByItems = Math.floor(
+      (remainingItems + 1e-7) / itemsPerEventSong
+    );
+
+    const maxEventManual = Math.max(
+      0,
+      Math.min(maxEventByTime, maxEventByItems)
+    );
+
+    // イベント曲手打ち回数も調整
+    for (
+      let eventRuns = maxEventManual;
+      eventRuns >= 0;
+      eventRuns--
     ) {
-      best = candidate;
+      const candidate = simulateMixed(
+        song,
+        eventTime,
+        networkTime,
+        itemMap,
+        {
+          normalManual: normalRuns,
+          normalBg: bgNormalCapacity,
+          eventManual: eventRuns,
+          eventBg: bgEventCapacity
+        },
+        averageManual,
+        bonusSchedule,
+        startingItems,
+        elapsedStartSeconds
+      );
+
+      if (candidate.errors.length > 0) {
+        candidate.errors.forEach(error => {
+          failureErrors.add(error);
+        });
+        continue;
+      }
+
+      if (
+        best === null ||
+        candidate.dailyPoint > best.dailyPoint ||
+        (
+          candidate.dailyPoint === best.dailyPoint &&
+          candidate.currentItems > best.currentItems
+        )
+      ) {
+        best = candidate;
+      }
+
+      break;
     }
   }
 
-  if (!best) {
+  if (best === null) {
+    console.log("混合モード計算失敗", {
+      failureErrors: Array.from(failureErrors),
+      startingItems,
+      periodSeconds,
+      normalBgTime,
+      eventBgTime,
+      remaining,
+      maxNormalManual,
+      bgNormalCapacity,
+      bgEventCapacity,
+      averageManual
+    });
+
     if (showAlert) {
       showMixedCalculationError(
         Array.from(failureErrors)
@@ -1280,6 +1287,161 @@ function calculateMixedMode(
 
   return best;
 }
+
+
+
+
+function getEventDaySeconds(index) {
+  const isLastDay = index === eventDateList.length - 1;
+
+  return isLastDay
+    ? 9 * 60 * 60
+    : 24 * 60 * 60;
+}
+
+function getEventTotalSeconds() {
+  return eventDateList.reduce(
+    (total, item, index) =>
+      total + getEventDaySeconds(index),
+    0
+  );
+}
+
+function getEffectiveDaySetting(index) {
+  const own = dailySettings[index];
+
+  if (!own) return null;
+
+  if (index === 0 || own.useOwnSettings) {
+    return own;
+  }
+
+  return dailySettings[0];
+}
+
+
+function simulateEventByDays(
+  mode,
+  song,
+  eventTime,
+  networkTime,
+  itemMap
+) {
+  const bonusSchedule = getBonusSchedule(false);
+
+  if (!bonusSchedule) return null;
+
+  const results = [];
+
+  let currentItems = 0;
+  let elapsedSeconds = 0;
+
+  let totalPoints = 0;
+  let totalEventRuns = 0;
+
+  const originalDayIndex = selectedEventDayIndex;
+
+  for (let index = 0; index < eventDateList.length; index++) {
+    const setting = getEffectiveDaySetting(index);
+
+    if (!setting) return null;
+
+    const periodSeconds = getEventDaySeconds(index);
+
+    // この日の設定を画面上の計算入力へ反映
+    // 先にBG時間をリセットして、前日の上限の影響を防ぐ
+    setWheelValue("normalBg", 0);
+    setWheelValue("eventBg", 0);
+
+    accuracyIds.forEach(id => {
+      $(id).value = String(setting.accuracy[id] ?? 0);
+    });
+
+    updateAccuracyLimit();
+
+    setWheelValue("normalBg", setting.normalBg);
+    setWheelValue("eventBg", setting.eventBg);
+
+    let result;
+
+    if (mode === "both") {
+      const bgTotal =
+        setting.normalBg +
+        (eventTime > 0 ? setting.eventBg : 0);
+
+      if (bgTotal > periodSeconds) {
+        alert(
+          `${index + 1}日目のBG時間が、` +
+          `プレイ可能時間を超えています。`
+        );
+        return null;
+      }
+
+      result = calculateMixedMode(
+        song,
+        eventTime,
+        networkTime,
+        itemMap,
+        false,
+        periodSeconds,
+        currentItems,
+        elapsedSeconds
+      );
+
+    } else {
+      const isManual = !isFullBackground;
+
+      result = simulateSinglePeriod(
+        periodSeconds,
+        isManual,
+        song,
+        eventTime,
+        networkTime,
+        itemMap,
+        bonusSchedule,
+        currentItems,
+        elapsedSeconds
+      );
+    }
+
+    console.log("日別計算の確認", {
+  day: index + 1,
+  periodSeconds,
+  startingItems: currentItems,
+  result,
+  setting: getEffectiveDaySetting(index)
+});
+    if (!result || result.errors?.length) {
+      alert(
+        `${index + 1}日目の計算に失敗しました。\n` +
+        "精度・BG時間・アイテム数を確認してください。"
+      );
+      return null;
+    }
+
+    currentItems = result.currentItems;
+    totalPoints += result.dailyPoint;
+    totalEventRuns += result.actualEventRuns;
+
+    results.push({
+      date: eventDateList[index].date,
+      day: index + 1,
+      periodSeconds,
+      ...result
+    });
+
+    elapsedSeconds += periodSeconds;
+  }
+
+  return {
+    days: results,
+    totalPoints,
+    totalEventRuns,
+    finalItems: currentItems,
+    totalSeconds: elapsedSeconds
+  };
+}
+
 
 // ===================================
 // 225時間シミュレーション
@@ -1800,160 +1962,496 @@ function showMixedResult(song, result) {
 // 計算実行
 // ===================================
 
+
+
+
+
+
+function renderDailyPointChart(days) {
+  const container = document.getElementById("dailyPointChart");
+  if (!container) return;
+
+  container.replaceChildren();
+
+  if (!Array.isArray(days) || days.length === 0) return;
+
+  const values = days.map(day =>
+    Math.max(0, Number(day.dailyPoint) || 0)
+  );
+
+  const maximum = Math.max(...values, 1);
+
+  // 縦軸を見やすい数値に丸める
+  const rawStep = maximum / 5;
+  const magnitude = Math.pow(
+    10,
+    Math.floor(Math.log10(rawStep))
+  );
+  const step = Math.ceil(rawStep / magnitude) * magnitude;
+  const axisMax = step * 5;
+
+  // グラフ全体
+  const chart = document.createElement("div");
+  chart.className = "point-chart-layout";
+
+  // 左側：縦軸
+  const axis = document.createElement("div");
+  axis.className = "point-chart-axis";
+
+  for (let i = 5; i >= 0; i--) {
+    const label = document.createElement("span");
+    label.textContent = (step * i).toLocaleString();
+    axis.appendChild(label);
+  }
+
+  // 右側：棒グラフ
+  const plot = document.createElement("div");
+  plot.className = "point-chart-plot";
+  plot.style.setProperty("--chart-days", days.length);
+
+  // 補助線
+  const grid = document.createElement("div");
+  grid.className = "point-chart-grid";
+
+  for (let i = 0; i <= 5; i++) {
+    const line = document.createElement("div");
+    line.className = "point-chart-grid-line";
+    grid.appendChild(line);
+  }
+
+  plot.appendChild(grid);
+
+  // 棒グラフ
+  days.forEach((day, index) => {
+    const point = values[index];
+    const percent = (point / axisMax) * 100;
+
+    const column = document.createElement("div");
+    column.className = "point-chart-column";
+
+    const valueLabel = document.createElement("div");
+    valueLabel.className = "point-chart-value";
+    valueLabel.textContent = point.toLocaleString();
+
+const bar = document.createElement("div");
+bar.className = "point-chart-bar";
+
+// グラフの高さ220pxを基準に計算
+const barHeight = (point / axisMax) * 220;
+
+bar.style.height = `${barHeight}px`;
+    bar.title = `${index + 1}日目：${point.toLocaleString()} pt`;
+
+    const dayLabel = document.createElement("div");
+    dayLabel.className = "point-chart-day";
+    dayLabel.textContent = `${index + 1}日目`;
+
+valueLabel.style.bottom = `${barHeight + 5}px`;
+valueLabel.style.top = "auto";
+
+column.append(valueLabel, bar, dayLabel);
+    plot.appendChild(column);
+  });
+
+  chart.append(axis, plot);
+  container.appendChild(chart);
+}
+
+
+
+
+
+function switchResultView(isMixedMode) {
+  const eventSummary = $("eventSummaryResult");
+  const normalResult = $("results");
+
+  const commonSummary = document.querySelector(".result-summary");
+  const resultContent = normalResult?.querySelector(".result-content");
+
+  if (!eventSummary || !normalResult || !commonSummary || !resultContent) {
+    return;
+  }
+
+  // 共通5項目をモードに応じた場所へ移動
+  if (isMixedMode) {
+    // 混合モード：日別詳細の下
+    eventSummary.appendChild(commonSummary);
+  } else {
+    // フル手打ち・フルBG：従来のResult内
+    resultContent.prepend(commonSummary);
+  }
+
+  // 表示切り替え
+  eventSummary.hidden = !isMixedMode;
+  normalResult.hidden = isMixedMode;
+}
+
+
+function renderDailyResultDetails(days) {
+  const tabs = document.getElementById("resultDayTabs");
+
+  if (!tabs || !Array.isArray(days) || days.length === 0) {
+    return;
+  }
+
+  tabs.replaceChildren();
+
+  function showDay(index) {
+    const day = days[index];
+    if (!day) return;
+
+    const setting = getEffectiveDaySetting(index);
+
+    document.getElementById("resultSelectedDay").textContent =
+      `${index + 1}日目`;
+
+    document.getElementById("resultNormalBgTime").textContent =
+      secToTime(setting?.normalBg ?? 0);
+
+    document.getElementById("resultEventBgTime").textContent =
+      secToTime(setting?.eventBg ?? 0);
+
+    document.getElementById("resultEarnedItems").textContent =
+      Math.floor(day.totalItems ?? 0).toLocaleString();
+
+    document.getElementById("resultDailyPoints").textContent =
+      Math.floor(day.dailyPoint ?? 0).toLocaleString();
+
+    tabs.querySelectorAll(".result-day-tab").forEach(
+      (button, buttonIndex) => {
+        button.classList.toggle(
+          "active",
+          buttonIndex === index
+        );
+      }
+    );
+  }
+
+  days.forEach((day, index) => {
+    const button = document.createElement("button");
+
+    button.type = "button";
+    button.className = "event-date-tab result-day-tab";
+    button.textContent = `${index + 1}日目`;
+
+    button.addEventListener("click", () => {
+      showDay(index);
+    });
+
+    tabs.appendChild(button);
+  });
+
+  // 初期表示は1日目
+  showDay(0);
+}
+
+
+
+function showEventSummaryResult(projection) {
+  if (!projection || !Array.isArray(projection.days)) {
+    return;
+  }
+
+  const days = projection.days;
+
+  // 総合獲得ポイント
+  const totalPoints = days.reduce(
+    (total, day) =>
+      total + (Number(day.dailyPoint) || 0),
+    0
+  );
+
+  $("eventTotalPoints").textContent =
+    Math.floor(totalPoints).toLocaleString();
+
+  $("eventTotalDays").textContent =
+    `イベント全${days.length}日間の合計`;
+
+  // 日別グラフ
+  renderDailyPointChart(days);
+
+  // 日別詳細
+  renderDailyResultDetails(days);
+
+  // 新Result画面を表示
+  $("eventSummaryResult").hidden = false;
+}
+
+
+
+
 function runCalculation() {
   const mode = getSelectedPlayMode();
 
-  if (!validateCommonInputs(mode)) {
+  if (!validateCommonInputs(mode)) return;
+
+  if (!eventDateList.length) {
+    alert("イベント日程を設定してください。");
     return;
   }
 
-  if (mode === "both" && !validateBgTimes()) {
-    return;
-  }
+  saveCurrentDayInputs();
 
   const song = normalSongs[$("normalSong").selectedIndex];
   const eventTime = getEventInputTime();
   const networkTime = getNetworkTime();
   const itemMap = getItemMap();
 
-  if (mode === "both") {
-    const result = calculateMixedMode(
+  const originalIndex = selectedEventDayIndex;
+
+  let projection;
+
+  try {
+    projection = simulateEventByDays(
+      mode,
       song,
       eventTime,
       networkTime,
       itemMap
     );
+  } finally {
+    // 計算前に選択していた日付へ戻す
+    setWheelValue("normalBg", 0);
+    setWheelValue("eventBg", 0);
+    applyDayInputs(originalIndex);
+    renderEventDateTabs();
+  }
 
-    if (!result) {
-      return;
-    }
+  if (!projection) return;
 
-    const projection = simulate225Hours(
-      (periodSeconds, startingItems, elapsedSeconds) => {
-        return calculateMixedMode(
-          song,
-          eventTime,
-          networkTime,
-          itemMap,
-          false,
-          periodSeconds,
-          startingItems,
-          elapsedSeconds
-        );
-      }
-    );
+  const firstDay = projection.days[0];
 
-    if (!projection.completed) {
-      alert(
-        "アイテム上限またはアイテム不足の問題が発生しました。\n\nバクグラ時間や精度設定を調整してください。"
-      );
-
-      return;
-    }
-
-    result.projectedEventRuns =
-      projection.eventRuns;
-
-    result.projectedPoint =
-      projection.eventPoints;
-
-    result.projection = projection;
+  if (mode === "both") {
+    const result = {
+      ...firstDay,
+      projectedEventRuns: projection.totalEventRuns,
+      projectedPoint: projection.totalPoints,
+      projection
+    };
 
     showMixedResult(song, result);
 
   } else {
     const isManual = !isFullBackground;
 
-    const result = calculateSingleMode(
-      isManual,
-      song,
-      eventTime,
-      networkTime,
-      itemMap
+    const averageItem = isManual
+      ? calculateManualAverage(itemMap, false)
+      : itemMap.Dコン;
+
+    const normalCycle = getCycleTime(
+      song.time, isManual, false, networkTime
     );
 
-    if (!result) {
-      return;
-    }
+    const eventCycle = getCycleTime(
+      eventTime, isManual, true, networkTime
+    );
+
+    const result = {
+      averageItem,
+      normalFullTime:
+        (requiredItems / averageItem) *
+        normalCycle.cycle - normalCycle.standby,
+      eventFullTime: usedTime(eventFullCount, eventCycle),
+      dailyEventRuns: firstDay.actualEventRuns,
+      dayPoint: firstDay.dailyPoint,
+      projectedPoint: projection.totalPoints
+    };
 
     showSingleResult(song, isManual, result);
   }
 
-  showScreen("result");
+// プレイモードによってResult画面を切り替える
+if (mode === "both") {
+  // 混合モード：新しいResult画面
+  showEventSummaryResult(projection);
+  switchResultView(true);
+} else {
+  // フル手打ち・フルバックグラウンド：従来のResult画面
+  switchResultView(false);
 }
+
+// 保存
+saveLocalData();
+
+// Result画面へ移動
+showScreen("result");
+}
+
 
 $("calc").addEventListener("click", runCalculation);
 
 // ===================================
-// ホイール設定
+// 共通ホイール設定
+// ===================================
+
+// ダイアログで使用するホイールID
+const dialogWheelIds = {
+  Hour: "dialogHourWheel",
+  Min: "dialogMinWheel",
+  Sec: "dialogSecWheel"
+};
+
+// 現在編集している時間の種類
+let activeWheelKey = null;
+
+// ダイアログ内の仮設定時間
+let dialogWheelDraft = null;
+
+// ダイアログを開く前のスクロール状態
+let previousBodyOverflow = "";
+
+
+// ===================================
+// 時間表示更新
+// ===================================
+
+function updateWheelTimeDisplay(key) {
+
+  const textId = key === "normalBg"
+    ? "normalBgTimeText"
+    : "eventBgTimeText";
+
+  $(textId).textContent =
+    secToTime(wheelState[key].seconds);
+}
+
+
+// ===================================
+// ホイール描画
+// 上下の余白と数字の高さを固定
 // ===================================
 
 function renderWheel(key, unit, maxValue, selectedValue) {
-  const wheel = $(`${key}${unit}Wheel`);
 
-  if (!wheel) {
-    return;
-  }
+  const wheel = $(dialogWheelIds[unit]);
 
-  const rowHeight =
-    wheel.clientHeight <= 155
-      ? 36
-      : WHEEL_ROW_HEIGHT;
+  if (!wheel) return;
 
-  wheel.innerHTML =
-    '<div class="wheel-spacer"></div>';
+  const rowHeight = WHEEL_ROW_HEIGHT;
 
+  // ホイールの表示領域の高さ
+  const wheelHeight = wheel.clientHeight;
+
+  // 数字を中央に配置するための上下余白
+  const spacerHeight = Math.max(
+    0,
+    (wheelHeight - rowHeight) / 2
+  );
+
+  wheel.innerHTML = "";
+
+  // 上側の余白
+  const topSpacer = document.createElement("div");
+
+  topSpacer.className = "wheel-spacer";
+
+  topSpacer.style.height = `${spacerHeight}px`;
+  topSpacer.style.minHeight = `${spacerHeight}px`;
+  topSpacer.style.flex = `0 0 ${spacerHeight}px`;
+
+  wheel.appendChild(topSpacer);
+
+  // 数字を作成
   for (let value = 0; value <= maxValue; value++) {
+
     const option = document.createElement("div");
 
     option.className = "wheel-option";
     option.dataset.value = String(value);
     option.textContent = String(value);
 
+    // 数字の高さを40pxに固定
+    option.style.height = `${rowHeight}px`;
+    option.style.minHeight = `${rowHeight}px`;
+    option.style.maxHeight = `${rowHeight}px`;
+    option.style.flex = `0 0 ${rowHeight}px`;
+    option.style.boxSizing = "border-box";
+    option.style.margin = "0";
+
     wheel.appendChild(option);
   }
 
-  wheel.insertAdjacentHTML(
-    "beforeend",
-    '<div class="wheel-spacer"></div>'
-  );
+  // 下側の余白
+  const bottomSpacer = document.createElement("div");
+
+  bottomSpacer.className = "wheel-spacer";
+
+  bottomSpacer.style.height = `${spacerHeight}px`;
+  bottomSpacer.style.minHeight = `${spacerHeight}px`;
+  bottomSpacer.style.flex = `0 0 ${spacerHeight}px`;
+
+  wheel.appendChild(bottomSpacer);
 
   wheel.dataset.rowHeight = String(rowHeight);
 
+  // 選択数字を中央に配置
   wheel.scrollTop = selectedValue * rowHeight;
 
   updateWheelHighlight(wheel);
 }
 
+
+// ===================================
+// ホイール選択位置更新
+// 実際に中央にある数字を取得
+// ===================================
+
 function updateWheelHighlight(wheel) {
-  const rowHeight = Number(
-    wheel.dataset.rowHeight || WHEEL_ROW_HEIGHT
-  );
 
-  const value = Math.max(
-    0,
-    Math.round(wheel.scrollTop / rowHeight)
-  );
+  const options = [
+    ...wheel.querySelectorAll(".wheel-option")
+  ];
 
-  wheel.querySelectorAll(".wheel-option").forEach(option => {
-    option.classList.toggle(
-      "selected",
-      Number(option.dataset.value) === value
+  if (options.length === 0) return 0;
+
+  const wheelRect = wheel.getBoundingClientRect();
+
+  const centerY =
+    wheelRect.top + wheelRect.height / 2;
+
+  let selectedOption = options[0];
+  let minDistance = Infinity;
+
+  options.forEach(option => {
+
+    const rect = option.getBoundingClientRect();
+
+    const optionCenter =
+      rect.top + rect.height / 2;
+
+    const distance = Math.abs(
+      centerY - optionCenter
     );
+
+    if (distance < minDistance) {
+      minDistance = distance;
+      selectedOption = option;
+    }
+
   });
 
-  return value;
+  options.forEach(option => {
+
+    option.classList.toggle(
+      "selected",
+      option === selectedOption
+    );
+
+  });
+
+  return Number(selectedOption.dataset.value);
 }
+
 
 // ===================================
 // BG時間の上限
 // ===================================
 
 function getWheelMaxSeconds(key) {
-  const otherKey =
-    key === "normalBg"
-      ? "eventBg"
-      : "normalBg";
+
+  const otherKey = key === "normalBg"
+    ? "eventBg"
+    : "normalBg";
 
   const otherSeconds =
     wheelState[otherKey]?.seconds || 0;
@@ -1971,19 +2469,27 @@ function getWheelMaxSeconds(key) {
   );
 }
 
+
 // ===================================
-// ダイヤルの最大値を取得
+// ホイールの各項目の最大値
 // ===================================
 
-function getWheelUnitMax(key, unit) {
+function getWheelUnitMax(
+  key,
+  unit,
+  current = wheelState[key]
+) {
+
   const maxSeconds = getWheelMaxSeconds(key);
-  const current = wheelState[key];
 
   if (unit === "Hour") {
+
     return Math.floor(maxSeconds / 3600);
+
   }
 
   if (unit === "Min") {
+
     if (current.hour * 3600 > maxSeconds) {
       return 0;
     }
@@ -1995,9 +2501,11 @@ function getWheelUnitMax(key, unit) {
       59,
       Math.floor(remaining / 60)
     );
+
   }
 
   if (unit === "Sec") {
+
     const used =
       current.hour * 3600 +
       current.minute * 60;
@@ -2010,26 +2518,61 @@ function getWheelUnitMax(key, unit) {
       59,
       maxSeconds - used
     );
+
   }
 
   return 0;
 }
 
+
 // ===================================
-// ホイール値設定
+// ダイアログ内ホイール描画
+// ===================================
+
+function renderDialogWheels() {
+
+  if (!activeWheelKey || !dialogWheelDraft) {
+    return;
+  }
+
+  const key = activeWheelKey;
+  const current = dialogWheelDraft;
+
+  ["Hour", "Min", "Sec"].forEach(unit => {
+
+    const stateValue =
+      unit === "Hour"
+        ? current.hour
+        : unit === "Min"
+          ? current.minute
+          : current.second;
+
+    renderWheel(
+      key,
+      unit,
+      getWheelUnitMax(key, unit, current),
+      stateValue
+    );
+
+  });
+
+}
+
+
+// ===================================
+// 確定済みホイールの値を設定
 // ===================================
 
 function setWheelValue(key, totalSeconds) {
+
   totalSeconds = Math.max(
     0,
     Math.floor(totalSeconds || 0)
   );
 
-  const maxSeconds = getWheelMaxSeconds(key);
-
   totalSeconds = Math.min(
     totalSeconds,
-    maxSeconds
+    getWheelMaxSeconds(key)
   );
 
   const hour = Math.floor(totalSeconds / 3600);
@@ -2043,43 +2586,30 @@ function setWheelValue(key, totalSeconds) {
     second
   };
 
-  renderWheel(
-    key,
-    "Hour",
-    getWheelUnitMax(key, "Hour"),
-    hour
-  );
-
-  renderWheel(
-    key,
-    "Min",
-    getWheelUnitMax(key, "Min"),
-    minute
-  );
-
-  renderWheel(
-    key,
-    "Sec",
-    getWheelUnitMax(key, "Sec"),
-    second
-  );
+  updateWheelTimeDisplay(key);
 
   updateDailyTimeTotal();
+
+  if (activeWheelKey === key) {
+    dialogWheelDraft = { ...wheelState[key] };
+    renderDialogWheels();
+  }
+
 }
+
 
 // ===================================
 // ホイール上限更新
 // ===================================
 
 function refreshWheelLimits() {
+
   ["normalBg", "eventBg"].forEach(key => {
-    let seconds =
-      wheelState[key]?.seconds || 0;
 
     const maxSeconds = getWheelMaxSeconds(key);
 
-    seconds = Math.min(
-      seconds,
+    const seconds = Math.min(
+      wheelState[key].seconds,
       maxSeconds
     );
 
@@ -2094,125 +2624,594 @@ function refreshWheelLimits() {
       second
     };
 
-    renderWheel(
-      key,
-      "Hour",
-      getWheelUnitMax(key, "Hour"),
-      hour
-    );
+    updateWheelTimeDisplay(key);
 
+  });
+
+  updateDailyTimeTotal();
+
+  if (activeWheelKey) {
+    dialogWheelDraft = { ...wheelState[activeWheelKey] };
+    renderDialogWheels();
+  }
+
+}
+
+
+// ===================================
+// ダイアログ内の仮時間を更新
+// ===================================
+
+function updateWheelValueFromScroll(unit, value) {
+
+  if (!activeWheelKey || !dialogWheelDraft) {
+    return;
+  }
+
+  const key = activeWheelKey;
+  const current = { ...dialogWheelDraft };
+
+  if (unit === "Hour") {
+    current.hour = value;
+  }
+
+  if (unit === "Min") {
+    current.minute = value;
+  }
+
+  if (unit === "Sec") {
+    current.second = value;
+  }
+
+  const maxSeconds = getWheelMaxSeconds(key);
+
+  let totalSeconds =
+    current.hour * 3600 +
+    current.minute * 60 +
+    current.second;
+
+  totalSeconds = Math.max(
+    0,
+    Math.min(totalSeconds, maxSeconds)
+  );
+
+  dialogWheelDraft = {
+    seconds: totalSeconds,
+    hour: Math.floor(totalSeconds / 3600),
+    minute: Math.floor((totalSeconds % 3600) / 60),
+    second: totalSeconds % 60
+  };
+
+  // 時間変更後は分・秒の選択可能範囲を更新
+  if (unit === "Hour") {
     renderWheel(
       key,
       "Min",
-      getWheelUnitMax(key, "Min"),
-      minute
+      getWheelUnitMax(key, "Min", dialogWheelDraft),
+      dialogWheelDraft.minute
     );
 
     renderWheel(
       key,
       "Sec",
-      getWheelUnitMax(key, "Sec"),
-      second
+      getWheelUnitMax(key, "Sec", dialogWheelDraft),
+      dialogWheelDraft.second
     );
-  });
-
-  updateDailyTimeTotal();
-}
-
-// ===================================
-// ホイールの値を更新
-// ===================================
-
-function updateWheelValueFromScroll(key, unit, value) {
-  const current = wheelState[key];
-
-  let hour = current.hour;
-  let minute = current.minute;
-  let second = current.second;
-
-  if (unit === "Hour") {
-    hour = value;
-  } else if (unit === "Min") {
-    minute = value;
-  } else if (unit === "Sec") {
-    second = value;
   }
 
-  let totalSeconds =
+  // 分変更後は秒の選択可能範囲を更新
+  if (unit === "Min") {
+    renderWheel(
+      key,
+      "Sec",
+      getWheelUnitMax(key, "Sec", dialogWheelDraft),
+      dialogWheelDraft.second
+    );
+  }
+}
+
+
+// ===================================
+// ダイアログを開く
+// ===================================
+
+function openTimeDialog(key) {
+  hideDailyCheckStatus();
+
+  activeWheelKey = key;
+
+  dialogWheelDraft = {
+    ...wheelState[key]
+  };
+
+  $("timeDialogTitle").textContent =
+    key === "normalBg"
+      ? "通常曲BG時間設定"
+      : "イベント曲BG時間設定";
+
+  // ダイアログを表示
+$("timeDialogOverlay").hidden = false;
+
+// 表示後にホイールを描画
+requestAnimationFrame(() => {
+  renderDialogWheels();
+});
+
+  previousBodyOverflow =
+    document.body.style.overflow;
+
+  document.body.style.overflow = "hidden";
+
+  $("timeDialogOverlay").hidden = false;
+
+  $("confirmTimeDialog").focus();
+
+}
+
+
+// ===================================
+// 日別設定のリアルタイム判定
+// ===================================
+
+let dailyCheckTimer = null;
+
+function showDailyCheckStatus(type, title, message) {
+  const area = $("dailyCheckStatus");
+  if (!area) return;
+
+  area.hidden = false;
+  area.className = `daily-check-status ${type}`;
+
+  area.replaceChildren();
+
+  const titleElement = document.createElement("div");
+  titleElement.className = "daily-check-title";
+  titleElement.textContent = title;
+
+  const messageElement = document.createElement("div");
+  messageElement.className = "daily-check-message";
+  messageElement.textContent = message;
+
+  area.append(titleElement, messageElement);
+}
+
+function hideDailyCheckStatus() {
+  const area = $("dailyCheckStatus");
+  if (area) area.hidden = true;
+}
+
+// 各日の入力を使って、成立するかを確認
+function checkDailySettings() {
+  clearTimeout(dailyCheckTimer);
+
+  saveCurrentDayInputs();
+
+  const mode = getSelectedPlayMode();
+
+  if (mode !== "both") {
+    hideDailyCheckStatus();
+    return;
+  }
+
+  const song = normalSongs[$("normalSong").selectedIndex];
+  const eventTime = getEventInputTime();
+  const networkTime = getNetworkTime();
+  const itemMap = getItemMap();
+
+  if (!eventDateList.length || eventTime <= 0) {
+    showDailyCheckStatus(
+      "pending",
+      "未判定",
+      "イベント日程とイベント曲時間を設定してください。"
+    );
+    return;
+  }
+
+  const savedIndex = selectedEventDayIndex;
+  const selectedDay = savedIndex + 1;
+
+  showDailyCheckStatus(
+    "pending",
+    "判定中",
+    `${selectedDay}日目の設定を確認しています。`
+  );
+
+  // 確定後、画面の描画を優先してから計算
+  dailyCheckTimer = setTimeout(() => {
+    let currentItems = 0;
+    let elapsedSeconds = 0;
+    let failure = null;
+
+    try {
+      for (let i = 0; i < eventDateList.length; i++) {
+        const setting = getEffectiveDaySetting(i);
+        const periodSeconds = getEventDaySeconds(i);
+
+        if (!setting) {
+          failure = {
+            day: i + 1,
+            message: "日別設定が見つかりません。"
+          };
+          break;
+        }
+
+        const normalBg = Number(setting.normalBg) || 0;
+        const eventBg = Number(setting.eventBg) || 0;
+
+        if (normalBg + eventBg > periodSeconds) {
+          failure = {
+            day: i + 1,
+            message:
+              `BG時間が${secToTime(
+                normalBg + eventBg - periodSeconds
+              )}超過しています。`
+          };
+          break;
+        }
+
+        // その日の設定を計算用の入力に反映
+        setWheelValue("normalBg", 0);
+        setWheelValue("eventBg", 0);
+
+        accuracyIds.forEach(id => {
+          $(id).value = String(setting.accuracy[id] ?? 0);
+        });
+
+        setWheelValue("normalBg", normalBg);
+        setWheelValue("eventBg", eventBg);
+
+        const averageManual = calculateManualAverage(
+          itemMap,
+          false
+        );
+
+        if (averageManual === null) {
+          failure = {
+            day: i + 1,
+            message: "精度の合計を100%にしてください。"
+          };
+          break;
+        }
+
+        const normalManualCycle = getCycleTime(
+          song.time, true, false, networkTime
+        );
+
+        const normalBgCycle = getCycleTime(
+          song.time, false, false, networkTime
+        );
+
+        const eventBgCycle = getCycleTime(
+          eventTime, false, true, networkTime
+        );
+
+        const remaining =
+          periodSeconds - normalBg - eventBg;
+
+        const maxManualRuns = capacityFor(
+          remaining, normalManualCycle
+        );
+
+        const bgNormalRuns = capacityFor(
+          normalBg, normalBgCycle
+        );
+
+        const bgEventRuns = capacityFor(
+          eventBg, eventBgCycle
+        );
+
+        const maxAvailableItems =
+          currentItems +
+          maxManualRuns * averageManual +
+          bgNormalRuns * itemMap.Dコン;
+
+        const requiredBgItems =
+          bgEventRuns * itemsPerEventSong;
+
+        // アイテム不足が数学的に確定する場合
+        if (maxAvailableItems + 1e-7 < requiredBgItems) {
+          const shortage = Math.ceil(
+            requiredBgItems - maxAvailableItems - 1e-7
+          );
+
+          failure = {
+            day: i + 1,
+            message:
+              `${shortage.toLocaleString()}個のアイテムが不足しています。`
+          };
+          break;
+        }
+
+        const result = calculateMixedMode(
+          song,
+          eventTime,
+          networkTime,
+          itemMap,
+          false,
+          periodSeconds,
+          currentItems,
+          elapsedSeconds
+        );
+
+
+if (!result || result.errors?.length) {
+  const errors = result?.errors || [];
+
+  let title = "計算エラー";
+  let message =
+    "設定したBG時間で成立するプレイ順序を確認できませんでした。";
+
+  if (errors.includes("depletion")) {
+    title = "アイテム不足";
+    message =
+      "イベント曲に必要なアイテムが不足しています。\n" +
+      "通常曲BG時間を増やすか、イベント曲BG時間を減らしてください。";
+  } else if (errors.includes("limit")) {
+    title = "アイテム上限";
+    message =
+      "アイテム所持上限99,999個を守れません。\n" +
+      "通常曲BG時間を減らすか、イベント曲BG時間を増やしてください。";
+  }
+
+  failure = {
+    day: i + 1,
+    title,
+    message
+  };
+
+  break;
+}
+
+
+        currentItems = result.currentItems;
+        elapsedSeconds += periodSeconds;
+      }
+    } catch (error) {
+      console.error("日別設定判定エラー", error);
+      failure = {
+        day: selectedDay,
+        message: "計算中にエラーが発生しました。"
+      };
+    } finally {
+      // 元の選択日に戻す
+      setWheelValue("normalBg", 0);
+      setWheelValue("eventBg", 0);
+      applyDayInputs(savedIndex);
+    }
+
+    if (failure) {
+  showDailyCheckStatus(
+    "error",
+    `${failure.day}日目：${failure.title || "設定エラー"}`,
+    failure.message
+  );
+} else {
+      showDailyCheckStatus(
+        "ok",
+        "✓ 正常",
+        "イベント全日程の設定で計算できました。"
+      );
+    }
+  }, 0);
+}
+
+
+
+// ===================================
+// ダイアログを閉じて時間を確定
+// ===================================
+
+function confirmTimeDialog() {
+
+  if (!activeWheelKey || !dialogWheelDraft) {
+    return;
+  }
+
+  // 決定時点のホイール位置を直接読み取る
+  const hour = updateWheelHighlight(
+    $("dialogHourWheel")
+  );
+
+  const minute = updateWheelHighlight(
+    $("dialogMinWheel")
+  );
+
+  const second = updateWheelHighlight(
+    $("dialogSecWheel")
+  );
+
+  // 読み取った値から合計秒数を計算
+  const totalSeconds =
     hour * 3600 +
     minute * 60 +
     second;
 
-  const maxSeconds = getWheelMaxSeconds(key);
+  const key = activeWheelKey;
 
-  totalSeconds = Math.min(
-    totalSeconds,
-    maxSeconds
+  // 時間を確定
+  setWheelValue(
+    key,
+    Math.min(
+      totalSeconds,
+      getWheelMaxSeconds(key)
+    )
   );
 
-  setWheelValue(key, totalSeconds);
+  activeWheelKey = null;
+  dialogWheelDraft = null;
 
-  refreshWheelLimits();
+  $("timeDialogOverlay").hidden = true;
+
+  document.body.style.overflow =
+    previousBodyOverflow;
+
+resetResult();
+updateMixedPreview();
+
+// 確定後に日別設定を判定
+checkDailySettings();
+
+// 確定したBG時間を保存
+saveCurrentAppSettings();
 }
 
+
 // ===================================
-// ホイールイベント
+// ダイアログ操作イベント
 // ===================================
 
-["normalBg", "eventBg"].forEach(key => {
-  ["Hour", "Min", "Sec"].forEach(unit => {
-    const wheel = $(`${key}${unit}Wheel`);
+// 通常曲BGを開く
+$("openNormalBgTime").addEventListener("click", () => {
+  openTimeDialog("normalBg");
+});
 
-    if (!wheel) {
-      return;
+// イベント曲BGを開く
+$("openEventBgTime").addEventListener("click", () => {
+  openTimeDialog("eventBg");
+});
+
+// 決定
+$("confirmTimeDialog").addEventListener(
+  "click",
+  confirmTimeDialog
+);
+
+
+// ===================================
+// 共通ホイールイベント
+// ===================================
+
+["Hour", "Min", "Sec"].forEach(unit => {
+
+  const wheel = $(dialogWheelIds[unit]);
+
+  let scrollTimer;
+
+  wheel.addEventListener("scroll", () => {
+
+    clearTimeout(scrollTimer);
+
+    scrollTimer = setTimeout(() => {
+
+      if (!activeWheelKey) {
+        return;
+      }
+
+      const value = updateWheelHighlight(wheel);
+
+      updateWheelValueFromScroll(
+        unit,
+        value
+      );
+
+    }, 80);
+
+  });
+
+});
+
+
+// ===================================
+// 背景操作のロック
+// ===================================
+
+const timeDialogOverlay = $("timeDialogOverlay");
+
+// 背景をタップしても閉じない
+timeDialogOverlay.addEventListener("click", event => {
+
+  if (event.target === timeDialogOverlay) {
+    event.preventDefault();
+  }
+
+});
+
+// 背景部分のスクロールを禁止
+timeDialogOverlay.addEventListener(
+  "wheel",
+  event => {
+
+    if (!event.target.closest(".time-dialog")) {
+      event.preventDefault();
     }
 
-    let scrollTimer;
+  },
+  { passive: false }
+);
 
-    wheel.addEventListener("scroll", () => {
-      clearTimeout(scrollTimer);
+timeDialogOverlay.addEventListener(
+  "touchmove",
+  event => {
 
-      scrollTimer = setTimeout(() => {
-        const value = updateWheelHighlight(wheel);
+    if (!event.target.closest(".time-dialog")) {
+      event.preventDefault();
+    }
 
-        updateWheelValueFromScroll(
-          key,
-          unit,
-          value
-        );
+  },
+  { passive: false }
+);
 
-        if (
-          getEventInputTime() <= 0 &&
-          getSelectedPlayMode() === "both" &&
-          !eventTimeAlertActive
-        ) {
-          eventTimeAlertActive = true;
 
-          alert(
-            "イベント曲の時間が未入力です。イベント曲の時間を入力してください。"
-          );
-        }
+// ===================================
+// ダイアログ内のキーボード操作制限
+// ===================================
 
-        resetResult();
-        updateMixedPreview();
+timeDialogOverlay.addEventListener("keydown", event => {
 
-      }, 80);
-    });
-  });
+  if (event.key === "Escape") {
+    event.preventDefault();
+    return;
+  }
+
+  if (event.key !== "Tab") {
+    return;
+  }
+
+  const controls = [
+    $("dialogHourWheel"),
+    $("dialogMinWheel"),
+    $("dialogSecWheel"),
+    $("confirmTimeDialog")
+  ];
+
+  const first = controls[0];
+  const last = controls[controls.length - 1];
+
+  if (
+    event.shiftKey &&
+    document.activeElement === first
+  ) {
+
+    event.preventDefault();
+    last.focus();
+
+  } else if (
+    !event.shiftKey &&
+    document.activeElement === last
+  ) {
+
+    event.preventDefault();
+    first.focus();
+
+  }
+
 });
+
 
 // ===================================
 // ホイール初期化
 // ===================================
 
 function initializeWheels() {
+
   setWheelValue("normalBg", 0);
   setWheelValue("eventBg", 0);
+
   refreshWheelLimits();
+
 }
 
 initializeWheels();
-
 
 function showScreen(name) {
   $("settingsScreen").hidden = name !== "settings";
@@ -2301,3 +3300,565 @@ showScreen("settings");
 updatePlayMode();
 updateDailyTimeTotal();
 updateBonusChangePoints();
+
+// ===================================
+// イベント日程管理
+// ===================================
+
+
+
+/* ==========================================
+   イベント日程・ローカル保存
+========================================== */
+
+const STORAGE_KEY = "nogifesCalculatorData";
+
+const eventStartDateInput = $("eventStartDate");
+const eventDaysInput = $("eventDays");
+
+let eventDateList = [];
+
+// 設定を保存
+function saveLocalData() {
+  try {
+    const bonusChanges = Array.from(
+      document.querySelectorAll(".bonus-change-row")
+    ).map(row => ({
+      day: row.querySelector('[data-field="day"]').value,
+      hour: row.querySelector('[data-field="hour"]').value,
+      minute: row.querySelector('[data-field="minute"]').value,
+      bonus: row.querySelector('[data-field="bonus"]').value
+    }));
+
+
+const data = {
+  startDate: eventStartDateInput.value,
+  days: eventDaysInput.value,
+
+  // プレイ方法
+  playMode: document.querySelector(
+    'input[name="playMode"]:checked'
+  )?.value ?? "both",
+
+  // フル手打ち・フルバクグラ
+  fullBackground: isFullBackground,
+
+  // 回線速度
+  network: document.querySelector(
+    'input[name="network"]:checked'
+  )?.value ?? "26",
+
+  normalSong: $("normalSong").value,
+  eventMin: $("eventMin").value,
+  eventSec: $("eventSec").value,
+  bonus: $("bonus").value,
+
+  bonusChanges,
+  dailySettings
+};
+
+
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify(data)
+    );
+  } catch (error) {
+    console.error("設定の保存に失敗しました", error);
+  }
+}
+
+// 設定を復元
+function loadLocalData() {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (!saved) return;
+
+    const data = JSON.parse(saved);
+
+    if (!data || typeof data !== "object") return;
+
+
+    
+// ===================================
+// プレイ方法の復元
+// ===================================
+
+if (data.playMode !== undefined) {
+  const playModeRadio = Array.from(
+    document.querySelectorAll('input[name="playMode"]')
+  ).find(radio => radio.value === data.playMode);
+
+  if (playModeRadio) {
+    playModeRadio.checked = true;
+  }
+}
+
+// ===================================
+// フル手打ち・フルバクグラの復元
+// ===================================
+
+if (typeof data.fullBackground === "boolean") {
+  setFullMode(data.fullBackground);
+}
+
+// ===================================
+// 回線速度の復元
+// ===================================
+
+if (data.network !== undefined) {
+  const networkRadio = Array.from(
+    document.querySelectorAll('input[name="network"]')
+  ).find(radio => radio.value === String(data.network));
+
+  if (networkRadio) {
+    networkRadio.checked = true;
+  }
+}
+
+// ===================================
+// プレイ方法に合わせて表示更新
+// ===================================
+
+updatePlayMode();
+updateMixedDaySettingsVisibility();
+
+
+    if (data.startDate) {
+      eventStartDateInput.value = data.startDate;
+    }
+
+    if (data.days) {
+      eventDaysInput.value = data.days;
+    }
+
+    // 通常曲
+    if (data.normalSong !== undefined) {
+      const optionExists = Array.from(
+        $("normalSong").options
+      ).some(option => option.value === String(data.normalSong));
+
+      if (optionExists) {
+        $("normalSong").value = String(data.normalSong);
+      }
+    }
+
+    updateNormalSongTime();
+
+    // イベント曲時間・初期特攻値
+    ["eventMin", "eventSec", "bonus"].forEach(id => {
+      if (data[id] !== undefined) {
+        $(id).value = String(data[id]);
+      }
+    });
+
+    updateEventPoint();
+
+    // 特攻値の変更予定
+    $("bonusChanges").replaceChildren();
+
+    if (Array.isArray(data.bonusChanges)) {
+      data.bonusChanges.forEach(savedRow => {
+        addBonusChangeRow();
+
+        const rows = document.querySelectorAll(
+          ".bonus-change-row"
+        );
+
+        const row = rows[rows.length - 1];
+
+        ["day", "hour", "minute", "bonus"].forEach(field => {
+          if (savedRow[field] !== undefined) {
+            row.querySelector(
+              `[data-field="${field}"]`
+            ).value = String(savedRow[field]);
+          }
+        });
+      });
+    }
+
+    updateBonusChangePoints();
+
+    // 日付別設定を復元
+    if (data.startDate && createEventDateList()) {
+      dailySettings = eventDateList.map((item, index) => {
+        const savedDay = data.dailySettings?.find(
+          day => day.date === item.date
+        );
+
+        return normalizeDailySetting(
+          item.date,
+          index,
+          savedDay
+        );
+      });
+
+      selectedEventDayIndex = 0;
+
+      // 古いホイール上限の影響を避ける
+      setWheelValue("normalBg", 0);
+      setWheelValue("eventBg", 0);
+
+      applyDayInputs(0);
+      renderEventDateTabs();
+    }
+
+    refreshWheelLimits();
+    updateDailyTimeTotal();
+
+  } catch (error) {
+    console.error("設定の復元に失敗しました", error);
+  }
+}
+
+
+// ===================================
+// イベント日付一覧を作成
+// ===================================
+
+function createEventDateList() {
+
+  // 入力値を取得
+  const startDateValue = eventStartDateInput.value;
+  const eventDays = Number(eventDaysInput.value);
+
+  // 入力チェック
+  if (!startDateValue) {
+    alert("イベント開始日を入力してください。");
+    return false;
+  }
+
+  if (!eventDays || eventDays < 1 || eventDays > 10) {
+    alert("イベント日数は1〜10日の範囲で選択してください。");
+    return false;
+  }
+
+  // 開始日を取得
+  const [year, month, day] = startDateValue.split("-").map(Number);
+
+  // 日付一覧を初期化
+  eventDateList = [];
+
+  // 日数分の日付を作成
+  for (let i = 0; i < eventDays; i++) {
+
+    const date = new Date(year, month - 1, day + i);
+
+    // 日付を YYYY-MM-DD 形式に変換
+    const formattedDate =
+      `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+
+    eventDateList.push({
+      day: i + 1,
+      date: formattedDate
+    });
+  }
+
+
+const previousSettings = dailySettings;
+
+dailySettings = eventDateList.map((item, index) => {
+  const saved = previousSettings.find(
+    setting => setting.date === item.date
+  );
+
+  return normalizeDailySetting(
+    item.date,
+    index,
+    saved
+  );
+});
+
+return true;
+
+}
+
+
+
+
+let dailySettings = [];
+
+
+function normalizeDailySetting(date, index, saved) {
+  const accuracy = {};
+
+  accuracyIds.forEach(id => {
+    accuracy[id] = Number(saved?.accuracy?.[id] ?? 0);
+  });
+
+  return {
+    date,
+    useOwnSettings: index === 0
+  ? true
+  : typeof saved?.useOwnSettings === "boolean"
+    ? saved.useOwnSettings
+    : index === eventDateList.length - 1,
+    accuracy,
+    normalBg: Number(saved?.normalBg ?? 0),
+    eventBg: Number(saved?.eventBg ?? 0)
+  };
+}
+
+function saveCurrentDayInputs() {
+  const setting = dailySettings[selectedEventDayIndex];
+
+  if (!setting) return;
+  if (selectedEventDayIndex > 0 && !setting.useOwnSettings) return;
+
+  setting.accuracy = Object.fromEntries(
+    accuracyIds.map(id => [id, Number($(id).value || 0)])
+  );
+
+  setting.normalBg = wheelState.normalBg.seconds;
+  setting.eventBg = wheelState.eventBg.seconds;
+}
+
+function applyDayInputs(index) {
+  const own = dailySettings[index];
+  const setting = index > 0 && !own?.useOwnSettings
+    ? dailySettings[0]
+    : own;
+
+  if (!setting) return;
+
+  accuracyIds.forEach(id => {
+    $(id).value = String(setting.accuracy[id] ?? 0);
+  });
+
+  updateAccuracyLimit();
+
+  setWheelValue("normalBg", setting.normalBg);
+  setWheelValue("eventBg", setting.eventBg);
+
+  const inherited = index > 0 && !own.useOwnSettings;
+
+  accuracyIds.forEach(id => {
+    $(id).disabled = inherited;
+  });
+
+  $("openNormalBgTime").disabled = inherited;
+  $("openEventBgTime").disabled = inherited;
+}
+
+// ===================================
+// イベント日付タブ
+// ===================================
+
+let selectedEventDayIndex = 0;
+
+function renderEventDateTabs() {
+
+  const tabsArea = $("eventDateTabs");
+  const settingsArea = $("eventDaySettings");
+
+  tabsArea.innerHTML = "";
+  settingsArea.innerHTML = "";
+
+  // 日付タブを作成
+  eventDateList.forEach((item, index) => {
+
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "event-date-tab";
+
+    if (index === selectedEventDayIndex) {
+      button.classList.add("active");
+    }
+
+    const [, month, day] = item.date.split("-");
+
+    button.textContent = `${Number(month)}/${Number(day)}`;
+
+button.addEventListener("click", () => {
+  saveCurrentAppSettings();
+
+  selectedEventDayIndex = index;
+
+  applyDayInputs(index);
+  renderEventDateTabs();
+  checkDailySettings();
+});
+
+    tabsArea.appendChild(button);
+  });
+
+  // 選択中の日付の設定
+  const setting = dailySettings[selectedEventDayIndex];
+
+  if (!setting) return;
+
+  const label = document.createElement("label");
+  label.className = "daily-setting-checkbox";
+
+  const checkbox = document.createElement("input");
+  checkbox.type = "checkbox";
+  checkbox.checked = setting.useOwnSettings;
+
+  // 1日目は変更不可
+  checkbox.disabled = selectedEventDayIndex === 0;
+
+
+checkbox.addEventListener("change", () => {
+
+  // 個別設定の状態を変更
+  setting.useOwnSettings = checkbox.checked;
+
+  // チェックを入れた場合は、現在表示中の設定を
+  // この日専用の設定として保存
+  if (checkbox.checked) {
+    setting.accuracy = Object.fromEntries(
+      accuracyIds.map(id => [
+        id,
+        Number($(id).value || 0)
+      ])
+    );
+
+    setting.normalBg = wheelState.normalBg.seconds;
+    setting.eventBg = wheelState.eventBg.seconds;
+  }
+
+  // チェック状態に応じて即座に入力欄へ反映
+  applyDayInputs(selectedEventDayIndex);
+
+  // 日付タブ・チェックボックスを更新
+  renderEventDateTabs();
+
+  // 計算結果とプレビューを更新
+  resetResult();
+  updateMixedPreview();
+
+  // 保存
+  saveLocalData();
+
+});
+
+
+  const text = document.createElement("span");
+
+  text.textContent =
+    selectedEventDayIndex === 0
+      ? "1日目の設定を使用"
+      : "この日の設定を個別にする";
+
+  label.appendChild(checkbox);
+  label.appendChild(text);
+
+  settingsArea.appendChild(label);
+}
+
+
+/* ==========================================
+   入力変更時の自動保存
+========================================== */
+
+function saveCurrentAppSettings() {
+  saveCurrentDayInputs();
+  saveLocalData();
+}
+
+// 通常曲・イベント曲・特攻値
+[
+  "normalSong",
+  "eventMin",
+  "eventSec",
+  "bonus"
+].forEach(id => {
+  const element = $(id);
+  if (!element) return;
+
+  element.addEventListener("input", saveCurrentAppSettings);
+  element.addEventListener("change", saveCurrentAppSettings);
+});
+
+// 精度
+accuracyIds.forEach(id => {
+  $(id).addEventListener("change", saveCurrentAppSettings);
+});
+
+// 特攻値変更欄（動的生成される入力欄も対象）
+$("bonusChanges").addEventListener(
+  "input",
+  saveCurrentAppSettings
+);
+
+$("bonusChanges").addEventListener(
+  "change",
+  saveCurrentAppSettings
+);
+
+// 特攻値変更欄の追加・削除
+$("addBonusChange").addEventListener(
+  "click",
+  () => saveLocalData()
+);
+
+$("bonusChanges").addEventListener("click", event => {
+  if (event.target.closest(".delete-bonus-button")) {
+    // 既存の削除処理が終わった後に保存
+    queueMicrotask(saveLocalData);
+  }
+});
+
+
+/* ==========================================
+   回線速度・プレイ方法の自動保存
+========================================== */
+
+// プレイ方法を変更したとき
+document.querySelectorAll(
+  'input[name="playMode"]'
+).forEach(radio => {
+  radio.addEventListener("change", saveLocalData);
+});
+
+// 回線速度を変更したとき
+document.querySelectorAll(
+  'input[name="network"]'
+).forEach(radio => {
+  radio.addEventListener("change", saveLocalData);
+});
+
+// フル手打ちを選択したとき
+manualModeButton.addEventListener(
+  "click",
+  saveLocalData
+);
+
+// フルバクグラを選択したとき
+backgroundModeButton.addEventListener(
+  "click",
+  saveLocalData
+);
+
+
+
+
+  // ===================================
+// 保存データの読み込み
+// ===================================
+
+loadLocalData();
+
+
+/* ==========================================
+   混合モード専用の日付設定表示
+========================================== */
+
+function updateMixedDaySettingsVisibility() {
+  const area = document.getElementById("mixedDaySettings");
+
+  if (!area) return;
+
+  const selectedMode = document.querySelector(
+    'input[name="playMode"]:checked'
+  );
+
+  if (!selectedMode) return;
+
+  area.hidden = selectedMode.value !== "both";
+}
+
+document.querySelectorAll('input[name="playMode"]').forEach(radio => {
+  radio.addEventListener("change", updateMixedDaySettingsVisibility);
+});
+
+updateMixedDaySettingsVisibility();
