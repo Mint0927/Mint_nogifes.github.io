@@ -1,546 +1,106 @@
-
 <!DOCTYPE html>
 <html lang="ja">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>乃木フェス計算ツール</title>
-  <link rel="stylesheet" href="style.css">
-  <script src="script.js" defer></script>
-</head>
-<body>
-<main class="container">
-
-  <header class="title-banner">
-    <h1>乃木フェス計算ツール</h1>
-    <button id="openSettings" type="button">設定</button>
-  </header>
-
-  <!-- =========================
-       設定画面
-  ========================== -->
-  <section id="settingsScreen" class="screen">
-
-        <!-- =========================
-         イベント日程設定
-    ========================== -->
-    <section class="panel">
-      <h2 class="panel-title">イベント日程</h2>
-
-      <div class="panel-content">
-
-        <!-- イベント開始日 -->
-        <div class="event-schedule-row">
-          <label class="field-label" for="eventStartDate">
-            イベント開始日
-          </label>
-
-          <input
-            type="date"
-            id="eventStartDate"
-          >
-        </div>
-
-        <!-- イベント日数 -->
-        <div class="event-schedule-row">
-          <label class="field-label" for="eventDays">
-            イベント日数
-          </label>
-
-          <select id="eventDays">
-            <option value="1">1日間</option>
-            <option value="2">2日間</option>
-            <option value="3">3日間</option>
-            <option value="4">4日間</option>
-            <option value="5" selected>5日間</option>
-            <option value="6">6日間</option>
-            <option value="7">7日間</option>
-            <option value="8">8日間</option>
-            <option value="9">9日間</option>
-            <option value="10">10日間</option>
-          </select>
-        </div>
-
-      </div>
-    </section>
-
-    <section class="panel">
-      <h2 class="panel-title">プレイ方法</h2>
-      <div class="panel-content mode-options">
-        <label>
-  <input type="radio" name="playMode" value="fullManual">
-  理論値／フルバクグラ
-</label>
-
-<label>
-  <input type="radio" name="playMode" value="both" checked>
-  手打ち＆バクグラ
-</label>
-      </div>
-    </section>
-
-    <section id="networkArea" class="network-area">
-      <h3>回線速度</h3>
-<div class="network-options">
-  <label class="network-fast">
-    <input type="radio" name="network" value="24">
-    速い
-  </label>
-
-  <label class="network-normal">
-    <input type="radio" name="network" value="26" checked>
-    普通
-  </label>
-
-  <label class="network-slow">
-    <input type="radio" name="network" value="28">
-    遅い
-  </label>
-</div>
-    </section>
-
-    <section class="panel">
-      <h2 class="panel-title">通常曲</h2>
-      <div class="panel-content">
-
-        <label class="field-label" for="normalSong">曲選択</label>
-        <select id="normalSong"></select>
-
-        <div class="song-time">
-          曲時間：
-          <input type="number" id="normalMin" readonly> 分
-          <input type="number" id="normalSec" readonly> 秒
-        </div>
-
-      </div>
-    </section>
-
-    <section class="panel">
-      <h2 class="panel-title">イベント曲</h2>
-      <div class="panel-content">
-
-        <label class="field-label">曲時間：</label>
-
-        <div class="time-inputs event-time">
-          <input
-            type="number"
-            id="eventMin"
-            min="0"
-            max="999"
-            placeholder="分"
-            inputmode="numeric"
-          >
-          <span>分</span>
-
-          <input
-            type="number"
-            id="eventSec"
-            min="0"
-            max="59"
-            placeholder="秒"
-            inputmode="numeric"
-          >
-          <span>秒</span>
-        </div>
-
-        <!-- 特攻値設定 -->
-        <section class="bonus-settings">
-
-          <h3 class="bonus-settings-title">特攻値設定</h3>
-
-          <!-- 初期特攻値 -->
-          <div class="bonus-row initial-bonus-row">
-
-            <div class="bonus-input">
-              <label for="bonus">初期特攻値</label>
-
-              <div class="bonus-input-unit">
-                <input
-                  type="number"
-                  id="bonus"
-                  min="0"
-                  max="9999"
-                  value="0"
-                  inputmode="numeric"
-                >
-                <span>%</span>
-              </div>
-            </div>
-
-            <div class="event-point">
-              <label>イベントPT</label>
-              <output id="eventPoint">pt</output>
-            </div>
-
-          </div>
-
-          <!-- 追加した特攻値 -->
-          <div id="bonusChanges"></div>
-
-          <!-- 変更追加ボタン -->
-          <button
-            id="addBonusChange"
-            class="add-bonus-button"
-            type="button"
-          >
-            特攻値変更
-          </button>
-
-        </section>
-
-      </div>
-    </section>
-
-
-
-    <button id="saveSettings" class="calc-button" type="button">
-      設定を保存
+ <head>
+  <meta charset="utf-8"/>
+  <meta content="width=device-width,initial-scale=1,viewport-fit=cover" name="viewport"/>
+  <link href="https://fonts.googleapis.com" rel="preconnect"/>
+  <link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+  <link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@600;700&amp;display=swap" rel="stylesheet"/>
+  <title>
+   乃木フェス イベントシミュレーター
+  </title>
+  <link href="icon-32.png" rel="icon" sizes="32x32" type="image/png"/>
+  <link href="icon-180.png" rel="apple-touch-icon"/>
+  <script>
+   if (location.protocol === "http:" || location.protocol === "https:") { const manifestLink = document.createElement("link"); manifestLink.rel = "manifest"; manifestLink.href = "manifest.webmanifest"; document.head.appendChild(manifestLink); }
+  </script>
+  <meta content="yes" name="apple-mobile-web-app-capable"/>
+  <meta content="乃木フェス" name="apple-mobile-web-app-title"/>
+  <meta content="#6a3fd6" name="theme-color"/>
+  <link href="style.css" rel="stylesheet"/>
+ </head>
+ <body>
+  <div class="app">
+   <nav aria-label="画面切り替え" class="nav" id="nav">
+    <button data-page="play">
+     <small>
+      プレイ
+     </small>
     </button>
-
-  </section>
-
-
-  <!-- =========================
-       プレイ画面
-  ========================== -->
-
-<section id="playScreen" class="screen" hidden>
-
-  <!-- 混合モード専用の日付設定 -->
-  <div id="mixedDaySettings">
-
-    <!-- イベント日付タブ -->
-    <div id="eventDateTabs" class="event-date-tabs"></div>
-
-    <!-- 日付ごとの設定 -->
-    <div id="eventDaySettings" class="event-day-settings"></div>
-
-  </div>
-
-
-    <section id="fullModeArea" class="panel">
-      <h2 class="panel-title">プレイ方法</h2>
-
-      <div class="panel-content toggle-row">
-
-        <button
-          id="manualModeButton"
-          class="toggle-button active"
-          type="button"
-          aria-pressed="true"
-        >
-          フル手打ち
-        </button>
-
-        <button
-          id="backgroundModeButton"
-          class="toggle-button"
-          type="button"
-          aria-pressed="false"
-        >
-          フルバクグラ
-        </button>
-
-      </div>
-    </section>
-
-    <section id="accuracyArea" class="panel accuracy-panel">
-      <h2 class="panel-title">精度</h2>
-
-      <div class="accuracy-grid">
-        <div class="accuracy-item">
-          <label for="フルエク">フルエク</label>
-          <select id="フルエク"></select>
-        </div>
-
-        <div class="accuracy-item">
-          <label for="フルコン">フルコン</label>
-          <select id="フルコン"></select>
-        </div>
-
-        <div class="accuracy-item">
-          <label for="Aコン">Aコン</label>
-          <select id="Aコン"></select>
-        </div>
-
-        <div class="accuracy-item">
-          <label for="Bコン">Bコン</label>
-          <select id="Bコン"></select>
-        </div>
-
-        <div class="accuracy-item">
-          <label for="Cコン">Cコン</label>
-          <select id="Cコン"></select>
-        </div>
-
-        <div class="accuracy-item">
-          <label for="Dコン">Dコン</label>
-          <select id="Dコン"></select>
-        </div>
-      </div>
-    </section>
-
-
-    <!-- 混合モード -->
-    <section id="mixedTimeArea" class="panel mixed-panel" hidden>
-
-      <h2 class="panel-title">1日あたりのバックグラウンド時間</h2>
-
-<div class="mixed-grid">
-
-  <!-- 通常曲BG -->
-  <div class="mixed-time-card normal-time-card">
-
-    <h3>通常曲/バックグラウンド</h3>
-
-    <button
-      id="openNormalBgTime"
-      class="time-open-button"
-      type="button"
-    >
-      <span class="time-open-label">設定時間</span>
-      <strong id="normalBgTimeText">0時間 0分 0秒</strong>
-      <span class="time-open-note">タップして変更</span>
+    <button data-page="result">
+     <small>
+      Result
+     </small>
     </button>
-
-  </div>
-
-  <!-- イベント曲BG -->
-  <div class="mixed-time-card event-time-card">
-
-    <h3>イベント曲/バックグラウンド</h3>
-
-    <button
-      id="openEventBgTime"
-      class="time-open-button"
-      type="button"
-    >
-      <span class="time-open-label">設定時間</span>
-      <strong id="eventBgTimeText">0時間 0分 0秒</strong>
-      <span class="time-open-note">タップして変更</span>
+    <button data-page="settings">
+     <small>
+      設定
+     </small>
     </button>
-
-  </div>
-
-</div>
-
-      <p id="dailyTimeTotal" class="daily-total">
-        バクグラ合計：0時間 0分 / 24時間
-      </p>
-
-      <div id="dailyCheckStatus"
-     class="daily-check-status"
-     role="status"
-     aria-live="polite"
-     hidden>
-</div>
-
-      <p class="time-note">
-        残り時間は手打ちに自動配分し、イベントptが最大になる組み合わせ探索します。
-      </p>
-
-    </section>
-
-    <!-- =========================
-     共通時間設定ダイアログ
-========================== -->
-
-<div id="timeDialogOverlay" class="time-dialog-overlay" hidden>
-
-  <section
-    class="time-dialog"
-    role="dialog"
-    aria-modal="true"
-    aria-labelledby="timeDialogTitle"
-  >
-
-    <h2 id="timeDialogTitle">時間設定</h2>
-
-    <div class="dial-time">
-
-      <div class="wheel-column">
-        <div class="wheel-label">時間</div>
-        <div id="dialogHourWheel" class="wheel" tabindex="0"></div>
-      </div>
-
-      <div class="wheel-column">
-        <div class="wheel-label">分</div>
-        <div id="dialogMinWheel" class="wheel" tabindex="0"></div>
-      </div>
-
-      <div class="wheel-column">
-        <div class="wheel-label">秒</div>
-        <div id="dialogSecWheel" class="wheel" tabindex="0"></div>
-      </div>
-
+   </nav>
+   <header class="banner">
+    <h1>
+     乃木フェス イベントシミュレーター
+    </h1>
+    <div id="subtitle">
+     初期設定画面
     </div>
-
-    <button
-      id="confirmTimeDialog"
-      class="calc-button"
-      type="button"
-    >
+   </header>
+   <main id="content">
+   </main>
+  </div>
+  <div class="modal" hidden="" id="wheelModal">
+   <div class="dialog">
+    <h2 id="wheelTitle">
+     時間を設定
+    </h2>
+    <div class="wheel-grid">
+     <label>
+      時間
+      <select id="wh">
+      </select>
+     </label>
+     <label>
+      分
+      <select id="wm">
+      </select>
+     </label>
+     <label id="wsWrap">
+      秒
+      <select id="ws">
+      </select>
+     </label>
+    </div>
+    <div class="actions">
+     <button class="ghost" id="wheelCancel">
+      キャンセル
+     </button>
+     <button class="primary" id="wheelOk">
       決定
-    </button>
-
-  </section>
-
-</div>
-
-
-    <button id="calc" class="calc-button" type="button">
-      計測
-    </button>
-
-  </section>
-
-</section>
-
-
-<!-- Result画面 -->
-<section id="resultScreen" class="screen" hidden>
-    <!-- イベント総合結果 -->
-<div id="eventSummaryResult" class="event-summary-result" hidden>
-  <h2 class="panel-title">Result</h2>
-
-  <!-- 総合獲得ポイント -->
-  <section class="result-total-card">
-    <p>イベント総合獲得ポイント</p>
-    <div class="result-total-value">
-      <span id="eventTotalPoints">0</span>
-      <span class="result-total-unit">pt</span>
+     </button>
     </div>
-    <p id="eventTotalDays" class="result-total-period"></p>
-  </section>
-
-  <!-- 日別ポイントグラフ -->
-  <section class="result-daily-panel">
-    <h2 class="result-daily-title">日別獲得ptグラフ</h2>
-
-    <div class="daily-chart-scroll">
-  <div id="dailyPointChart" class="daily-point-chart"></div>
-</div>
-  </section>
-
-  <!-- 日別詳細 -->
-  <section class="result-daily-panel">
-    <h2 class="result-daily-title">イベント全日の日別結果</h2>
-
-    <div id="resultDayTabs" class="event-date-tabs result-day-tabs"></div>
-
-    <div class="result-day-card">
-      <h3 id="resultSelectedDay">1日目</h3>
-
-      <div class="result-day-grid">
-        <div class="result-day-item">
-          <span>通常曲BG時間</span>
-          <strong id="resultNormalBgTime">0時間0分0秒</strong>
-        </div>
-
-        <div class="result-day-item">
-          <span>イベント曲BG時間</span>
-          <strong id="resultEventBgTime">0時間0分0秒</strong>
-        </div>
-
-        <div class="result-day-item">
-          <span>獲得アイテム</span>
-          <strong>
-            <span id="resultEarnedItems">0</span> 個
-          </strong>
-        </div>
-
-        <div class="result-day-item">
-          <span>獲得pt</span>
-          <strong>
-            <span id="resultDailyPoints">0</span> pt
-          </strong>
-        </div>
-      </div>
+   </div>
+  </div>
+  <div class="modal" hidden="" id="confirmModal">
+   <div class="dialog">
+    <h2>
+     イベントを終了しますか？
+    </h2>
+    <p>
+     現在のイベントの設定・結果・セット履歴は削除されます。この操作は取り消せません。
+    </p>
+    <div class="actions">
+     <button class="ghost" id="endCancel">
+      キャンセル
+     </button>
+     <button class="danger" id="endOk">
+      イベント終了
+     </button>
     </div>
-  </section>
-
-</div>
-
-<!-- 計算結果保持用（画面には表示しない） -->
-<div hidden>
-  <span id="resultDailyItems">0</span>
-  <span id="resultDailyEventRuns">0</span>
-  <span id="resultDayPoint">0</span>
-</div>
-
-    <section id="results" class="panel result-panel" hidden>
-      <h2 class="panel-title">Result</h2>
-
-        <!-- イベント推定全体pt -->
-      <div class="total-point-display">
-        <span class="total-point-label">イベント推定全体pt</span>
-        <strong id="result225Point">0</strong>
-        <span class="total-point-unit">pt</span>
-      </div>
-      <div class="result-content">
-
-        <div class="result-summary">
-
-          <div class="summary-item">
-            <span>選択曲</span>
-            <strong id="resultSong">-</strong>
-          </div>
-
-          <div class="summary-item">
-            <span>プレイ方法</span>
-            <strong id="resultMode">-</strong>
-          </div>
-
-          <div class="summary-item">
-            <span>平均アイテム数</span>
-            <strong id="resultAverage">0.00 個</strong>
-          </div>
-
-          <div class="summary-item">
-            <span>通常曲フル時間</span>
-            <strong id="resultNormalTime">0時間 0分 0秒</strong>
-          </div>
-
-          <div class="summary-item">
-            <span>イベント曲フル時間</span>
-            <strong id="resultEventTime">0時間 0分 0秒</strong>
-          </div>
-
-        </div>
-
-
-        <div id="mixedBreakdown" class="result-bottom" hidden>
-
-          <div class="result-card">
-            <h3>通常曲の内訳（1日）</h3>
-            <p>手打ち：<strong id="resultManualNormalRuns">0</strong> 回</p>
-            <p>バクグラ：<strong id="resultBgNormalRuns">0</strong> 回</p>
-            <p>手打ち獲得アイテム：<strong id="resultManualItems">0</strong> 個</p>
-            <p>バクグラ獲得アイテム：<strong id="resultBgItems">0</strong> 個</p>
-            <p>通常曲手打ち時間：<strong id="resultManualNormalTime">0</strong></p>
-          </div>
-
-          <div class="result-card">
-            <h3>イベント曲の内訳（1日）</h3>
-            <p>手打ち：<strong id="resultManualEventRuns">0</strong> 回</p>
-            <p>バクグラ：<strong id="resultBgEventRuns">0</strong> 回</p>
-            <p>手打ち獲得pt：<strong id="resultManualEventPoints">0</strong> pt</p>
-            <p>バクグラ獲得pt：<strong id="resultBgEventPoints">0</strong> pt</p>
-            <p>イベント曲手打ち時間：<strong id="resultManualEventTime">0</strong></p>
-          </div>
-
-        </div>
-
-      </div>
-    </section>
-
-
-    <button id="backToPlay" class="secondary-button" type="button">
-      トップ画面へ戻る
-    </button>
-
-  </section>
-
-</main>
-</body>
+   </div>
+  </div>
+  <script src="script.js">
+  </script>
+ </body>
 </html>
+
