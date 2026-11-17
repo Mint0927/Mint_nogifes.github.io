@@ -330,7 +330,17 @@ function simulate(stopAfterDay = null) {
         const count = a.mode === 'normal' ? Math.ceil(chunk / normalBg) : Math.min(114, Math.ceil(chunk / eventBg));
         if (count === 0) break;
         if (a.mode === 'event' && remaining > 114 * eventBg - 15) { errors.push(`${a.name}：イベントバクグラの連続実行114回を超えています。設定を分割してください`); break }
-        for (let j = 0; j < count; j++) {
+        // イベント曲バクグラは1曲ごとに補充せず、開始前に必要分を一括確保する。
+        // 1回875個、最大114回＝99,750個。所持上限99,999個は厳守する。
+        if (a.mode === 'event') {
+          const targetItems = count * ITEM_COST;
+          while (inv < targetItems && !errors.length) {
+            if (isFull || !gainNormal(false)) {
+              errors.push(`${day + 1}日目・${a.name}：イベントバクグラ${count}回分のアイテムを事前補充できません（必要${targetItems}個、所持${inv}個、残り手打ち枠 ${fmt(Math.max(0, free))}）`);
+            }
+          }
+        }
+        for (let j = 0; j < count && !errors.length; j++) {
           if (a.mode === 'normal') {
             if (inv + bgGain > ITEM_CAP && !errors.length) {
               // 上限に来そうなら、残りの通常曲バクグラぶんの空きを作るまでイベント曲をまとめて走らせる
@@ -341,8 +351,8 @@ function simulate(stopAfterDay = null) {
             }
             if (!errors.length && !gainNormal(true)) errors.push(`${a.name}：通常曲バクグラを実行できません`);
           } else {
-            while (inv < ITEM_COST && !errors.length) { if (isFull || !gainNormal(false)) errors.push(`${day + 1}日目・${a.name}：イベントバクグラ用アイテムを補充する手打ち時間が不足しています（残り手打ち枠 ${fmt(Math.max(0, free))}）`) }
-            if (!errors.length && !playEvent(true, j === count - 1 ? s.eventSeconds : eventBg)) errors.push(`${a.name}：イベントバクグラを実行できません`);
+            // 必要アイテムはバクグラ開始前に確保済み。ここでは連続消費のみ。
+            if (!playEvent(true, j === count - 1 ? s.eventSeconds : eventBg)) errors.push(`${a.name}：イベントバクグラを実行できません`);
           }
           if (errors.length) break;
         }
