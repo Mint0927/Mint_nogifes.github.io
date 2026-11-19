@@ -1,8 +1,6 @@
 try { localStorage.getItem('_t') } catch (e) { const m = {}; Object.defineProperty(window, 'localStorage', { value: { getItem: k => k in m ? m[k] : null, setItem: (k, v) => { m[k] = String(v) }, removeItem: k => { delete m[k] } } }) }
 'use strict';
-const PROD_KEY = 'nogifes_visual_v1', TEST_KEY = 'nogifes_date_test_v1', FLAG_KEY = 'nogifes_test_mode_enabled';
-let testMode = false;
-let KEY = PROD_KEY;
+const KEY = 'nogifes_visual_v1';
 const ITEM_CAP = 99999, ITEM_COST = 875;
 const SONGS = [['最後のTightHug', 212, 81], ['サヨナラの意味 向井葉月セレモニー', 213, 81], ['三番目の風', 214, 81], ['渋谷ブルース', 200, 75]];
 const TABLE = { 81: [930, 898, 868, 836, 806, 774], 75: [858, 828, 800, 772, 744, 714] };
@@ -10,9 +8,14 @@ const TYPES = ['仕事/学校', '授業・勉強', '食事・休憩', 'その他
 const escapeAttr = v => String(v ?? '').replace(/[&"'<>]/g, c => ({ '&': '&amp;', '"': '&quot;', "'": '&#39;', '<': '&lt;', '>': '&gt;' }[c]));
 const defaults = () => ({ initialized: false, start: '', days: 10, mode: 'both', song: -1, eventSeconds: 0, bonus: null, network: 26, day: 0, daysData: {}, history: [], bonusChanges: [] });
 let s; try { s = { ...defaults(), ...JSON.parse(localStorage.getItem(KEY) || '{}') } } catch { s = defaults() }
-const APP_VERSION = '2026.11.19.71';
-// Restore isolated test mode after page reload.
-try { testMode = localStorage.getItem(FLAG_KEY) === '1'; if (testMode) { KEY = TEST_KEY; s = { ...defaults(), ...JSON.parse(localStorage.getItem(TEST_KEY) || '{}') }; } } catch(e) { testMode = false; KEY = PROD_KEY; }
+// v80: 廃止したロス時間の旧設定が localStorage に残っていても、新規計算には適用しない。
+// 過去日の確定スナップショットは編集せず、保存された獲得pt・残アイテムを保持する。
+for (const d of Object.values(s.daysData || {})) {
+  if (d && typeof d === 'object') {
+    delete d.lossMinutes;
+    if (d.tabDone) delete d.tabDone.loss;
+  }
+}
 let simulationCache = null;
 let freshPreview = null; // 保存しない再計算結果。ページを再読込すると解除
 let previewActive = false;
@@ -51,7 +54,7 @@ function loadComparison() {
 
 const $ = id => document.getElementById(id), save = () => { simulationCache = null; s.savedAt = Date.now(); try { localStorage.setItem(KEY, JSON.stringify(s)) } catch (e) { } cloudDirty() };
 const localDayString = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-const currentDay = () => testMode && s.testClock ? new Date(s.testClock + 'T12:00:00') : new Date();
+const currentDay = () => new Date();
 // 計測時は仮確定。日付変更後にだけ本確定する。
 const freezeThrough = (index) => {
   if (!s.initialized || !s.start || index < 0) return;
@@ -82,7 +85,7 @@ const rollover = () => {
         const prior = s.snapshots?.[n - 1]?.settings || s.daysData[n - 1] || s.daysData[0];
         if (prior) {
           const next = JSON.parse(JSON.stringify(prior));
-          next.confirmed = false; next.lossMinutes = 0; next.tabDone = {accuracy:false,sleep:false,bg:false,loss:false};
+          next.confirmed = false; next.tabDone = {accuracy:false,sleep:false,bg:false};
           (next.activities || []).forEach(a => a.confirmed = false);
           s.daysData[n] = next;
           if (!s.todayOnlyMigrated) s.todayOnlyMigrated = {};
@@ -110,23 +113,12 @@ const invalidateProvisional = () => {
     delete s.snapshots[s.day];
   }
 };
-const switchMode = (on) => {
-  if (on === testMode) return;
-  if (on && !localStorage.getItem(TEST_KEY)) {
-    const copy = JSON.parse(localStorage.getItem(PROD_KEY) || JSON.stringify(defaults()));
-    copy.testClock = copy.start || localDayString(new Date()); copy.snapshots = {}; copy.lastSeenDate = copy.testClock;
-    localStorage.setItem(TEST_KEY, JSON.stringify(copy));
-  }
-  testMode = on; KEY = on ? TEST_KEY : PROD_KEY; localStorage.setItem(FLAG_KEY, on ? '1' : '0');
-  s = { ...defaults(), ...JSON.parse(localStorage.getItem(KEY) || '{}') };
-  page = s.initialized ? 'settings' : 'setup'; render();
-};
 const jp = (d) => `${d.getMonth() + 1}/${d.getDate()}`;
 const dateAt = (i) => { const [y, m, d] = (s.start || '2026-11-13').split('-').map(Number); return new Date(y, m - 1, d + i) };
 const todayIndex = () => { if (!s.start) return 0; const d = currentDay(), t = new Date(d.getFullYear(), d.getMonth(), d.getDate()); return Math.floor((t - dateAt(0)) / 86400000) };
 const newActivity = (name = '仕事/学校') => ({ name, mode: 'normal', duration: '00:00:00', startTime: '09:00', endTime: '10:00', confirmed: false });
 const dayData = (i) => {
-  if (!s.daysData[i]) s.daysData[i] = { accuracy: [0, 0, 0, 0, 0, 0], wake: '00:00:00', wakeManual: true, bedtime: '00:00', activities: [i === 0 ? {...newActivity(), startTime: '15:00', endTime: '16:00'} : newActivity()], lossMinutes: 0, confirmed: false };
+  if (!s.daysData[i]) s.daysData[i] = { accuracy: [0, 0, 0, 0, 0, 0], wake: '00:00:00', wakeManual: true, bedtime: '00:00', activities: [i === 0 ? {...newActivity(), startTime: '15:00', endTime: '16:00'} : newActivity()], confirmed: false };
   const d = s.daysData[i]; if (!d.bedtime) d.bedtime = '00:00';
   if (d.wakeManual === undefined) d.wakeManual = false;
   // Migrate unused legacy default rows without discarding configured rows.
@@ -216,7 +208,7 @@ const isFinalDay = i => i === s.days - 1 && i > 0;
 const copyDay = source => {
   const copy = JSON.parse(JSON.stringify(source));
   copy.confirmed = false;
-  copy.tabDone = { accuracy:false, sleep:false, bg:false, loss:false };
+  copy.tabDone = { accuracy:false, sleep:false, bg:false };
   if (Array.isArray(copy.activities)) copy.activities.forEach(a => a.confirmed = false);
   return copy;
 };
@@ -236,8 +228,6 @@ const predictionData = i => {
   }
   const base = predictionData(now);
   const predicted = JSON.parse(JSON.stringify(base));
-  // ロス時間は日付固有。未来日には当日のロス時間を引き継がない。
-  predicted.lossMinutes = 0;
   // BG時間帯・精度は従来どおり未来日予測に使用する。
   // 未来日の編集・保存はしない。
   if (isFinalDay(i)) {
@@ -270,30 +260,12 @@ const btn = (label, action, cls = 'primary') => `<button class="${cls}" data-act
 const dayLabel = i => `${i + 1}日目 (${jp(dateAt(i))})`;
 let page = s.initialized ? 'play' : 'setup';
 let playTab = 'accuracy';
-const tabDone = d => { if (!d.tabDone) d.tabDone = { accuracy: false, sleep: false, bg: false, loss: false }; return d.tabDone };
+const tabDone = d => { if (!d.tabDone) d.tabDone = { accuracy: false, sleep: false, bg: false }; return d.tabDone };
 const resetTab = (d, key) => { invalidateProvisional(); tabDone(d)[key] = false; d.confirmed = false };
-function render() { rollover(); if (!s.initialized && page !== 'setup') page = 'setup'; const titles = { setup: '初期設定画面', play: 'プレイ画面', result: 'Result（結果）', settings: '設定画面', history: 'セット履歴', help: '使い方' }; $('subtitle').textContent = (testMode ? '【テスト ' + (s.testClock || '') + '】 ' : '') + titles[page]; document.querySelectorAll('[data-page]').forEach(b => { b.classList.toggle('active', b.dataset.page === page); b.disabled = !s.initialized }); $('nav').classList.toggle('hidden', page === 'setup'); $('content').innerHTML = ({ setup: renderSetup, play: renderPlay, result: renderResult, settings: renderSettings, history: renderHistory, help: renderHelp }[page])(); }
+function render() { rollover(); if (!s.initialized && page !== 'setup') page = 'setup'; const titles = { setup: '初期設定画面', play: 'プレイ画面', result: 'Result（結果）', settings: '設定画面', history: 'セット履歴', help: '使い方' }; $('subtitle').textContent = titles[page]; document.querySelectorAll('[data-page]').forEach(b => { b.classList.toggle('active', b.dataset.page === page); b.disabled = !s.initialized }); $('nav').classList.toggle('hidden', page === 'setup'); $('content').innerHTML = ({ setup: renderSetup, play: renderPlay, result: renderResult, settings: renderSettings, history: renderHistory, help: renderHelp }[page])(); }
 function settingsFields(initial) { return panel('プレイの基本設定', row('プレイ方法', `<div class="seg"><button data-action="mode" data-value="both" class="${s.mode === 'both' ? 'selected' : ''}">手打ち＆バクグラ</button><button data-action="mode" data-value="fullBackground" class="${s.mode === 'fullBackground' ? 'selected' : ''}">フルバクグラ</button></div>`) + row('通常曲（共通）', `<select data-field="song"><option value="-1" ${s.song < 0 ? 'selected' : ''}>選択してください</option>${SONGS.map((a, i) => `<option value="${i}" ${s.song === i ? 'selected' : ''}>${a[0]}</option>`).join('')}</select>`) + row('イベント曲時間', `<button class="timebtn" data-wheel="eventSeconds">${s.eventSeconds > 0 ? fmt(s.eventSeconds).slice(3) : '未設定'}（分:秒）</button>`) + row('特攻値', `<input data-field="bonus" type="number" min="0" max="9999" value="${s.bonus ?? ''}" placeholder="未設定"> % <output>${s.bonus === null || s.bonus === '' ? '—' : num(eventPt(s.bonus)) + ' pt'}</output>`), '♧') + (s.mode === 'both' ? panel('回線速度（手打ち時のみ）', `<div class="seg">${[24, 26, 28].map((n, i) => `<button data-action="network" data-value="${n}" class="${s.network === n ? 'selected' : ''}">${['速い', '普通', '遅い'][i]}<br>(${n}秒)</button>`).join('')}</div>`, '◎') : '') + `<button class="primary wide" data-action="saveSettings">✓ 設定を保存</button>` + (initial ? '' : `<button class="danger wide" data-action="end">⚑ イベント終了</button>`) }
-function renderSetup() { return renderTestControls() + panel('イベント情報', row('イベント開始日', `<input data-field="start" type="date" value="${s.start}">`) + row('イベント日数', `<select data-field="days">${Array.from({ length: 10 }, (_, i) => `<option value="${i + 1}" ${s.days === i + 1 ? 'selected' : ''}>${i + 1}日</option>`).join('')}</select>`) + `<p class="note">イベント初日は15:00開始、最終日は23:59:59終了です。</p>`, '▣') + settingsFields(true) }
-function renderTestControls() {
-  const clock = testMode ? (s.testClock || localDayString(new Date())) : '';
-  const current = testMode && s.start ? todayIndex() : -1;
-  const status = current < 0 ? 'イベント開始前' : current >= s.days ? 'イベント終了後' : `${current + 1}日目`;
-  return panel('日付変更テストモード',
-    `<p class="note">本番の設定・計測結果とは別のデータで、翌日の本確定を確認できます。</p>` +
-    row('モード', `<strong>${testMode ? 'テスト中（本番データと分離）' : '本番モード'}</strong>`) +
-    btn(testMode ? 'テストを終了して本番に戻る' : 'テストモードを開始', 'toggleTest', testMode ? 'ghost' : 'primary') +
-    (testMode ? `<div class="test-clock-panel">` +
-      row('テスト上の日付', `<strong>${clock}（${status}）</strong>`) +
-      `<p class="note">当日を計測して仮確定 → 翌日へ進む → 前日が本確定になることを確認してください。</p>` +
-      `<button class="primary wide" data-action="testNextDay">翌日へ進む（前日を本確定）</button>` +
-      row('指定日まで進む', `<input id="testDate" type="date" min="${clock}" value="${clock}">`) +
-      `<button class="ghost wide" data-action="testSetDate">指定日へ進む</button>` +
-      `<button class="ghost wide" data-action="resetTest">テスト用データを初期化</button>` +
-      `<p class="note">テスト内の変更は本番データに反映されません。過去日に戻す場合はテスト用データを初期化してください。</p></div>` : '')
-  );
-}
-function renderSettings() { return renderTestControls() + panel('アプリ情報', row('バージョン', `<span class="soft">${APP_VERSION}</span>`) + `<p class="note">更新後はバージョン番号が変わったことを確認してください。保存済みの設定・確定データは保持されます。</p>`, '▣') + panel('イベント情報', row('イベント日数', `<span class="soft">${s.days}日（変更不可）</span>`) + row('イベント終了日時', `<span class="soft">${jp(dateAt(s.days - 1))} 23:59</span>`) + `<p class="note">イベント期間中は日数・終了日時を変更できません。</p>`, '▣') + settingsFields(false) }
+function renderSetup() { return panel('イベント情報', row('イベント開始日', `<input data-field="start" type="date" value="${s.start}">`) + row('イベント日数', `<select data-field="days">${Array.from({ length: 10 }, (_, i) => `<option value="${i + 1}" ${s.days === i + 1 ? 'selected' : ''}>${i + 1}日</option>`).join('')}</select>`) + `<p class="note">イベント初日は15:00開始、最終日は23:59:59終了です。</p>`, '▣') + settingsFields(true) }
+function renderSettings() { return panel('イベント情報', row('イベント日数', `<span class="soft">${s.days}日（変更不可）</span>`) + row('イベント終了日時', `<span class="soft">${jp(dateAt(s.days - 1))} 23:59</span>`) + `<p class="note">イベント期間中は日数・終了日時を変更できません。</p>`, '▣') + settingsFields(false) }
 function datebar() { return `<div class="datebar"><button data-action="prev" ${s.day <= 0 ? 'disabled' : ''}>❮</button><strong>▣ ${dayLabel(s.day)}</strong><button data-action="next" ${s.day >= s.days - 1 ? 'disabled' : ''}>❯</button></div>` }
 // 設定済みの楽曲からバクグラの1セット実行可能時間を算出する。
 // 通常曲は3時間の設定枠内に開始できる曲を最後まで再生する。
@@ -368,7 +340,7 @@ function renderPlay() {
   if (s.mode === 'fullBackground') return panel('フルバックグラウンド（225時間）', `<p class="note">日付・就寝時間・精度・バクグラ時間の設定は不要です。225時間を一括計算します。</p><button class="primary wide" data-action="measureFullBg">計測する</button>`);
   if (isFinalDay(s.day) && playTab === 'sleep') playTab = 'bg';
   const d = predictionData(s.day), full = s.mode === 'fullBackground', editable = canEditDay(), done = tabDone(d);
-  const tabs = [['accuracy', '精度'], ...(isFinalDay(s.day) ? [] : [['sleep', '起床・就寝']]), ['bg', 'バクグラ時間'], ['loss', 'ロス時間'], ['measure', '計測']];
+  const tabs = [['accuracy', '精度'], ...(isFinalDay(s.day) ? [] : [['sleep', '起床・就寝']]), ['bg', 'バクグラ時間'], ['measure', '計測']];
   const tabBar = `<div class="play-tabs" role="tablist" aria-label="プレイ設定">${tabs.map(([id, label]) => `<button type="button" role="tab" aria-selected="${playTab === id}" class="play-tab ${playTab === id ? 'active' : ''}" data-play-tab="${id}">${label}${id !== 'measure' && done[id] ? '<span class="tab-check" aria-label="設定完了">✓</span>' : ''}</button>`).join('')}</div>`;
   const disabled = editable ? '' : 'disabled';
   const future = s.day > todayIndex();
@@ -385,10 +357,8 @@ function renderPlay() {
     const acts = d.activities.map((a, i) => `<div class="activity"><div class="activity-name"><input class="activity-name-input" type="text" data-activity-name="${i}" value="${escapeAttr(a.name)}" maxlength="40" placeholder="項目名" ${disabled}></div><div class="seg"><button data-action="activityMode" data-index="${i}" data-value="normal" class="${a.mode === 'normal' ? 'selected' : ''}" ${disabled}>通常曲BG</button><button data-action="activityMode" data-index="${i}" data-value="event" class="${a.mode === 'event' ? 'selected' : ''}" ${disabled}>イベント曲BG</button></div><div class="bg-clock-row"><label>開始 <button type="button" class="timebtn" data-wheel="bgStart" data-index="${i}" ${disabled}>${escapeAttr(a.startTime || '09:00')}</button></label><label>終了 <button type="button" class="timebtn" data-wheel="bgEnd" data-index="${i}" ${disabled}>${escapeAttr(a.endTime || '10:00')}</button></label></div><div class="activity-confirm"><button class="primary" data-action="activityConfirm" data-index="${i}" ${disabled}>決定</button><span class="check-slot">${a.confirmed ? '<span class="check">✓</span>' : ''}</span></div>${i > 0 ? `<button class="remove-activity" data-action="removeActivity" data-index="${i}" ${disabled}>×</button>` : '<span class="remove-placeholder"></span>'}</div>`).join('');
     const total = d.activities.reduce((x, a) => x + activityDuration(a), 0);
     body = panel('時刻指定バクグラ', `<p class="small">日中BGの開始・終了時刻を指定します。就寝BGは起床・就寝タブから自動反映され、就寝時刻に開始します。</p>${bgScheduleBar(d,s.day)}${acts}${s.day < s.days - 1 ? `<div class="activity" aria-label="就寝BG 自動設定"><strong>就寝BG（自動）</strong><div class="seg"><span>イベント曲BGのみ・編集不要</span></div><div class="bg-clock-row">開始 ${escapeAttr(d.bedtime)}　終了 翌 ${escapeAttr(d.wake)}</div><p class="small">所持アイテムと起床までの時間から最大114回を自動計算。早く終了した場合は、その時刻から翌日の計算を開始します。</p></div>` : ''}<button class="ghost wide" data-action="addActivity" ${disabled}>＋ 項目追加</button><div class="total"><span>日中BG設定時間合計</span><strong>${fmt(total)}</strong></div><button class="primary wide" data-action="finishBg" ${disabled}>決定して次へ</button>`);
-  } else if (playTab === 'loss') {
-    body = panel('ロス時間の設定', `<p class="small">バクグラ終了後の更新忘れなど、手打ち・バクグラのどちらも実行しない時間を1日合計で設定します。</p><div class="row"><span class="label">ロス時間（時間・分）</span><div class="control"><input type="number" min="0" max="23" step="1" data-loss="hours" value="${Math.floor((d.lossMinutes || 0) / 60)}" ${disabled} style="width:65px"> 時間 <input type="number" min="0" max="59" step="1" data-loss="minutes" value="${(d.lossMinutes || 0) % 60}" ${disabled} style="width:65px"> 分</div></div><p class="note">ロス時間中はアイテムもptも増えません。バクグラ時間は減らさず、残りの手打ち時間から差し引きます。</p><button class="primary wide" data-action="finishLoss" ${disabled}>決定して次へ</button>`);
   } else {
-    const items = [['accuracy', '精度設定'], ...(isFinalDay(s.day) ? [] : [['sleep', '起床・就寝']]), ['bg', 'バクグラ時間'], ['loss', 'ロス時間']];
+    const items = [['accuracy', '精度設定'], ...(isFinalDay(s.day) ? [] : [['sleep', '起床・就寝']]), ['bg', 'バクグラ時間']];
     const all = items.every(([id]) => id === 'sleep' && isFinalDay(s.day) ? true : done[id]);
     body = panel('設定確認', items.map(([id, label]) => `<button class="review-row" data-play-tab="${id}"><span>${label}</span><span class="${done[id] ? 'check' : 'pending'}">${done[id] ? '✓ 設定完了' : '未確定'}　›</span></button>`).join('') + `<p class="small">当日は設定確定後に計測できます。未来日は編集せずに予測結果を確認できます。</p><button class="primary wide" data-action="measureDay" ${future || (all && editable) ? '' : 'disabled'}>${future ? '予測を表示' : s.day === activeIndex() ? '計測する' : '結果を表示'}</button>${s.snapshots?.[s.day] && !s.snapshots[s.day].finalized ? '<p class="note">仮確定中：当日は設定を変更して再計測できます。翌日になると本確定します。</p>' : ''}`);
   }
@@ -521,9 +491,9 @@ function simulateCandidate(stopAfterDay = null, selectionPolicy = 'carry') {
     }, 0);
     // 入力された時間だけで判定する。曲完走による数十秒の超過は
     // 実際の就寝開始を後ろにずらして吸収し、ここではエラーにしない。
-    const lossSeconds = Math.max(0, Number(d.lossMinutes) || 0) * 60;
-    if (configured + lossSeconds > awakeAvailable) {
-      errors.push(`${day + 1}日目：バクグラとロス時間の設定合計が活動可能時間を超えています（活動可能 ${fmt(awakeAvailable)}、バクグラ ${fmt(configured)}、ロス ${fmt(lossSeconds)}）`);
+    const lossSeconds = 0; // v80: ロス時間の入力機能は廃止。保存済み旧設定も計算に適用しない。
+    if (configured > awakeAvailable) {
+      errors.push(`${day + 1}日目：バクグラ設定の合計が活動可能時間を超えています（活動可能 ${fmt(awakeAvailable)}、バクグラ ${fmt(configured)}）`);
     }
     // 手打ち時間は完走分も含めた実行時間から差し引く。
     // 予約時間が活動時間を超える場合は手打ち枠をゼロとし、就寝開始を調整する。
@@ -581,7 +551,13 @@ function simulateCandidate(stopAfterDay = null, selectionPolicy = 'carry') {
         const feasible=[];
         for(let n=0;n<=maxN;n++){
           const gain=gainSchedule.total(manualNormal+n)-gainStart;
-          const maxE=Math.floor((available-n*normalManual)/eventManual);
+          // v82: 最終日の最終区間だけ、終了直前に開始したイベント曲の
+          // 完走（最大1曲分の時間超過）も計画候補へ含める。
+          // 途中のBG枠をまたぐプレイには適用しない。
+          const finalTail = day === s.days - 1 && lastSegment && deadline === end;
+          const maxE = finalTail
+            ? Math.floor((available - n * normalManual + eventManual - 1) / eventManual)
+            : Math.floor((available - n * normalManual) / eventManual);
           // 所持数が一時的に上限を超えないよう、イベント曲を先行実行できる回数も確認。
           const minE=Math.max(0,Math.ceil((inv+gain-ITEM_CAP)/ITEM_COST));
           const itemE=Math.floor((inv+gain-minimum)/ITEM_COST);
@@ -592,9 +568,17 @@ function simulateCandidate(stopAfterDay = null, selectionPolicy = 'carry') {
             // 必要なら先にイベント曲を行うので、アイテム残数の推移を検証する。
             const planned=manualOrder(n,e,inv,manualNormal);
             if (!planned || planned.stock !== remain) continue;
-            const idle=available-n*normalManual-e*eventManual;
+            const duration = n * normalManual + e * eventManual;
+            const overrun = duration > available;
+            if (overrun) {
+              // 最後に実行するイベント曲が、終了時刻より前に始まること。
+              // 通常曲の完走による時間超過や2曲以上の超過は禁止。
+              if (!finalTail || e < 1 || duration - eventManual >= available ||
+                  duration >= available + eventManual || planned.order.at(-1) !== 'e') continue;
+            }
+            const idle = Math.max(0, available - duration);
             minimumIdle=Math.min(minimumIdle,idle);
-            feasible.push({n,e,remain,idle});
+            feasible.push({n,e,remain,idle,overrun,order:overrun ? planned.order : null});
           }
         }
         // v19: 次区間で使える在庫を評価しつつ、端数時間を放置しない。
@@ -675,25 +659,30 @@ function simulateCandidate(stopAfterDay = null, selectionPolicy = 'carry') {
           pool.sort((a,b) => b.e-a.e || a.idle-b.idle || b.remain-a.remain);
           best = pool[0];
         }
+        // v82: 最終日の最終区間は獲得ptを増やせる完走候補を優先する。
+        // 同じイベント曲回数なら残りアイテムと未使用時間が少ない候補を選ぶ。
+        if (day === s.days - 1 && lastSegment && feasible.length) {
+          const bestEvents = Math.max(...feasible.map(c => c.e));
+          const finalChoices = feasible.filter(c => c.e === bestEvents);
+          finalChoices.sort((a,b) => a.remain-b.remain || a.idle-b.idle || b.n-a.n);
+          if (finalChoices.length) best = finalChoices[0];
+        }
         // v30: 就寝前の手打ち時間全体で「イベント消費→通常補充」を
         // 組み合わせ、就寝BGの必要アイテムを残せる実行可能な計画を選ぶ。
         // 先に決めた近似スコアよりも、実際のイベント曲回数と時間を優先。
         if (lastSegment && feasible.length) {
-          let optimal = null;
-          for (const c of feasible) {
-            const planned=manualOrder(c.n,c.e,inv,manualNormal);
-            if (!planned || planned.stock !== c.remain || planned.stock < minimum) continue;
-            const order=planned.order;
-            const candidate = {...c, order};
-            // v73: 就寝前は必要在庫を維持したうえで、余った時間を優先して埋める。
-          // イベント曲を1回多くするために数分間を捨てる候補を避ける。
-          // 候補のpt差がイベント曲1回を超える場合は従来のpt優先を維持する。
-          if (!optimal ||
-              (candidate.e >= optimal.e - 1 && candidate.idle < optimal.idle) ||
-              (candidate.idle === optimal.idle && candidate.e > optimal.e) ||
-              (candidate.e > optimal.e + 1)) optimal = candidate;
+          const maxEvents = Math.max(...feasible.map(c => c.e));
+          if (day === s.days - 1 && deadline === end) {
+            // 最終日は余剰アイテムの消費を優先。ただしイベント曲回数は減らさない。
+            const pool = feasible.filter(c => c.e === maxEvents);
+            pool.sort((a,b) => a.remain-b.remain || a.idle-b.idle || b.n-a.n);
+            if (pool.length) best = pool[0];
+          } else {
+            // 就寝日のBG用アイテムは維持し、1曲差以内で未使用時間を優先。
+            const pool = feasible.filter(c => c.e >= maxEvents - 1);
+            pool.sort((a,b) => a.idle - b.idle || b.e - a.e || b.remain - a.remain || a.n - b.n);
+            if (pool.length) best = pool[0];
           }
-          if (optimal) best = optimal;
         }
         if(!best)return;
         let n=best.n,e=best.e,guard=0;
@@ -1198,7 +1187,7 @@ log, points, earned, spent, inv, normalRuns, eventRuns, manualNormal, manualEven
 // 各日のBG・就寝設定と確定済み日付は全候補で共通。
 // 厳密な全探索ではなく、候補方針を増やした近似探索。
 function simulate(stopAfterDay = null) {
-  const policies = ['carrySleep113', 'activeSleep113', 'balancedSleep113', 'fillSleep113', 'carrySleep112', 'activeSleep112', 'balancedSleep112', 'carrySleep111', 'activeSleep111', 'carrySleep110', 'activeSleep110', 'carrySleep108', 'activeSleep108', 'carrySleep105', 'activeSleep105', 'carrySleep100', 'activeSleep100', 'carry', 'fill', 'tight', 'balanced', 'flexible', 'reserve', 'active', 'activeReserve', 'carry|sleep100', 'balanced|sleep100', 'active|sleep100', 'fill|sleep100', 'carry|sleep50', 'active|sleep50', ...[90,94,96,97,98,99].flatMap(p => ['carry','balanced','active'].map(mode => `${mode}|sleep${p}`))];
+  const policies = ['idle', 'carrySleep113', 'activeSleep113', 'balancedSleep113', 'fillSleep113', 'carrySleep112', 'activeSleep112', 'balancedSleep112', 'carrySleep111', 'activeSleep111', 'carrySleep110', 'activeSleep110', 'carrySleep108', 'activeSleep108', 'carrySleep105', 'activeSleep105', 'carrySleep100', 'activeSleep100', 'carry', 'fill', 'tight', 'balanced', 'flexible', 'reserve', 'active', 'activeReserve', 'carry|sleep100', 'balanced|sleep100', 'active|sleep100', 'fill|sleep100', 'carry|sleep50', 'active|sleep50', ...[90,94,96,97,98,99].flatMap(p => ['carry','balanced','active'].map(mode => `${mode}|sleep${p}`))];
   const idle = r => r.days.reduce((n,d) => n + (d.idleSeconds || 0), 0);
   const lastInv = r => r.days.length ? r.days[r.days.length - 1].inv : Infinity;
   const eligible = r => r.days.length > 0 && r.days.every(d => !d.errors?.length) &&
@@ -1257,8 +1246,10 @@ function simulate(stopAfterDay = null) {
       // ただし、長時間の空白だけで大幅にptが低い候補を採用しないよう上限を設定。
       // v73: 初日だけでなく最終日までの未使用秒数を評価する。
       // ただし獲得ptを大幅に犠牲にしないよう、最大10曲分の重みとする。
-      const penalty = r => Math.min(eventPt(s.bonus + 144) * 10,
-        idle(r) / 900 * eventPt(s.bonus + 144));
+      const penalty = r => Math.min(eventPt(s.bonus + 144) * 12,
+        idle(r) / 240 * eventPt(s.bonus + 144));
+      // おおむね4分の空白を手打ちイベント曲1回分として評価。
+      // 長時間の不足を無制限に減点しないため上限を設ける。
       const sleepShortfall = r => r.days.reduce((sum, d, i) => {
         if (i === s.days - 1 || !(d.sleepAvailable > 0)) return sum;
         const cycle = s.eventSeconds + 15;
@@ -1268,7 +1259,14 @@ function simulate(stopAfterDay = null) {
       // Missing overnight plays are a real loss of event points, not idle daytime.
       // Penalize each omitted feasible run so a daytime-only candidate cannot win
       // merely because its overnight inventory was spent before bedtime.
-      const score = r => r.totalPt - penalty(r) - sleepShortfall(r) * eventPt(s.bonus);
+      const finalItemPenalty = r => {
+        if (r.days.length !== s.days) return 0;
+        const final = lastInv(r);
+        // 875個以上の在庫は次のイベント曲の原資だが、
+        // 実際の獲得ptを大幅に落としてまで消費を優先しない。
+        return Math.max(0, Math.floor(final / ITEM_COST)) * eventPt(s.bonus + 144) * 0.15;
+      };
+      const score = r => r.totalPt - penalty(r) - sleepShortfall(r) * eventPt(s.bonus) - finalItemPenalty(r);
       better = score(candidate) > score(winner) + 0.0001 ||
         (Math.abs(score(candidate) - score(winner)) < 0.0001 && candidate.totalPt > winner.totalPt) ||
         (Math.abs(score(candidate) - score(winner)) < 0.0001 && candidate.totalPt === winner.totalPt && idle(candidate) < idle(winner)) ||
@@ -1300,104 +1298,6 @@ function simulate(stopAfterDay = null) {
   return result;
 }
 
-// 診断専用。シミュレーション結果は変更せず、日別の実行履歴をCSVに書き出す。
-function downloadSimulationDiagnostics() {
-  const result = cachedSimulation();
-  const song = SONGS[s.song] || SONGS[0];
-  const normalManual = song[1] + s.network;
-  const eventManual = s.eventSeconds + s.network + 1;
-  const headers = [
-    '日','日付','記録種別','連番','フェーズ','曲','方式','所要秒',
-    '開始からの累積秒','獲得アイテム','消費アイテム','操作後アイテム',
-    '獲得pt','活動可能秒','日中使用秒','日中未使用秒',
-    '手打ち通常回数','手打ちイベント回数','就寝バクグラ回数',
-    '就寝用必要アイテム','就寝開始予定秒','実際の就寝開始秒',
-    '翌日開始秒','ロス秒','エラー'
-  ];
-  const rows = [headers];
-  const csvCell = value => '"' + String(value ?? '').replace(/"/g, '""') + '"';
-  let previousInv = 0;
-  for (let i = 0; i < result.days.length; i++) {
-    const day = result.days[i];
-    const setting = predictionData(i);
-    const log = Array.isArray(day.log) ? day.log : [];
-    const initialInv = previousInv;
-    let inv = initialInv, elapsed = 0;
-    const wake = sec(setting.wake);
-    const bedAt = day.adjustedBedAt == null ? null : (i * 86400 + sec(setting.bedtime));
-    const required = 0; // v33: 就寝時の固定必要アイテムは廃止
-    const base = [i + 1, jp(dateAt(i))];
-    const metrics = [
-      day.awakeAvailable, day.daytimeUsed, day.idleSeconds,
-      day.manualNormal, day.manualEvent, day.sleepEventRuns,
-      required, bedAt, day.adjustedBedAt, day.dayEnd,
-      day.lossSeconds, (day.errors || []).join(' / ')
-    ];
-    rows.push([...base,'日別概要',0,'','','',0,0,0,0,initialInv,0,...metrics]);
-    for (let j = 0; j < log.length; j++) {
-      const entry = log[j];
-      const [kind, bg, seconds, itemDelta, points, phase] = entry;
-      elapsed += seconds;
-      inv += itemDelta;
-      rows.push([...base,'プレイ',j + 1,phase === 1 ? '就寝中' : '日中',
-        kind === 'n' ? '通常曲' : 'イベント曲',
-        bg ? 'バクグラ' : '手打ち',
-        seconds,elapsed,
-        itemDelta > 0 ? itemDelta : 0,
-        itemDelta < 0 ? -itemDelta : 0,
-        inv,points,...metrics]);
-    }
-    rows.push([...base,'日別終了',log.length,'','','',0,elapsed,
-      day.earned,day.spent,day.inv,day.points,...metrics]);
-    previousInv = day.inv;
-  }
-  // 失敗候補もCSVに記録。これまでのCSVは成功した2日分しか出力していなかった。
-  rows.push(['全体', '', '予測実行範囲', '', `開始=1日目 / 予定終了=${s.days}日目 / 実際=${result.days.length}日目 / 有効=${result.valid}`, '', '', '', '', '', '', result.days.at(-1)?.inv ?? '', '', '', '', '', '', '', '', '', '', '', '', '', '']);
-  for (let i = 0; i < result.days.length; i++) {
-    const d = result.days[i];
-    rows.push([i+1, jp(dateAt(i)), '予測日別状態', '', `開始=${d.dayStart} / 終了=${d.dayEnd} / エラー=${(d.errors || []).join(' / ') || 'なし'}`, '', '', '', '', '', '', d.inv, '', '', '', '', '', '', '', '', '', '', '', '', '']);
-  }
-  // v60: すべての探索候補の結果を診断CSVに記録。
-  for (const c of (result.candidateComparisons || [])) {
-    rows.push(['全体', '', '候補比較', '', c.policy,
-      c.firstFrozen ? '初日確定済み・再計算なし' : (c.valid ? '有効' : '無効'), c.days, c.firstIdle ?? '',
-      c.firstSleepRuns ?? '', c.totalPt, c.firstInv ?? '',
-      c.finalInv ?? '', c.totalIdle, '', '', '', '', '', '', '', c.errors || '']);
-  }
-  for (const failure of (result.candidateFailures || window.__nogifesCandidateFailures || [])) {
-    rows.push([failure.day, '', '予測失敗候補', '', failure.policy, '', '',
-      '', '', '', '', failure.inv ?? '', '', failure.start ?? '', failure.end ?? '',
-      '', '', '', '', '', '', '', '', '', failure.message]);
-  }
-  for (const trace of (window.__nogifesOptimizationTrace || [])) {
-    rows.push([trace.day, '', '最適化判定', '', trace.status, '', '',
-      trace.freeBefore, '', '', '', trace.itemsBefore, '',
-      trace.sleepNeed, trace.maxNormal, trace.maxEvent,
-      trace.selectedNormalBefore, trace.selectedEvent, trace.selectedNormalAfter,
-      trace.selectedSeconds]);
-  }
-  rows.push(['検証メモ','','全日合計','','','','',0,0,0,0,0,0,
-    '', '',result.days.reduce((n,d)=>n+(d.idleSeconds||0),0)]);
-  const finalDay = result.days[result.days.length - 1];
-  if (finalDay && result.days.length === s.days) {
-    rows.push(['検証メモ','','最終日残アイテム',finalDay.inv,
-      'イベント曲消費個数',ITEM_COST,
-      'イベント曲手打ち秒',eventManual,
-      '日中未使用秒合計',finalDay.idleSeconds,
-      '注記','v52：最終時刻までに開始した最後の曲は終了時刻超過でも完走']);
-  }
-  rows.push(['検証メモ','','通常曲手打ち秒',normalManual,'イベント曲手打ち秒',eventManual]);
-  const content = '\ufeff' + rows.map(row => row.map(csvCell).join(',')).join('\r\n');
-  const url = URL.createObjectURL(new Blob([content], {type:'text/csv;charset=utf-8'}));
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = 'nogifes_simulation_diagnostics.csv';
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
-
 // キャッシュはページ内だけで保持し、更新時には必ず新しいコードで再計算する。
 // 日別計測の simulate(day) は途中結果。全日程の予測キャッシュに混ぜない。
 let simulationCacheSignature = null;
@@ -1413,7 +1313,6 @@ function currentSimulationSignature() {
   });
 }
 function cachedSimulation() {
-  if (previewActive && freshPreview) return freshPreview;
   const signature = currentSimulationSignature();
   if (!simulationCache || simulationCache.partial || simulationCache.days.length < s.days || simulationCacheSignature !== signature) {
     simulationCache = simulate();
@@ -1422,77 +1321,26 @@ function cachedSimulation() {
   }
   return simulationCache;
 }
-// v62: 保存済みの確定日を一切変更せず、全日を一時的に再計算する。
+// v80: 通常表示と「予測を更新」は同じ確定データ・計算ルールを使う。
+// 以前の初日リセット式プレビューは結果が食い違う原因だったため廃止。
 function previewFromFirstDay() {
-  const savedSnapshots = s.snapshots;
-  const savedCache = simulationCache;
-  const savedTrace = window.__nogifesOptimizationTrace;
-  const savedFailures = window.__nogifesCandidateFailures;
-  const savedComparisons = window.__nogifesCandidateComparisons;
-  try {
-    const current = simulationCache && !simulationCache.partial ? simulationCache : simulate();
-    s.snapshots = {};
-    simulationCache = null;
-    const fresh = simulate();
-    if (fresh.valid && fresh.days.length === s.days) freshPreview = fresh;
-    const oldFirst = current.days?.[0];
-    const newFirst = fresh.days?.[0];
-    const fmtIdle = v => {
-      const n = Math.max(0, Math.round(Number(v) || 0));
-      return `${Math.floor(n / 3600)}時間${String(Math.floor(n % 3600 / 60)).padStart(2,'0')}分${String(n % 60).padStart(2,'0')}秒`;
-    };
-    const lines = [
-      '【初日からの再計算プレビュー】',
-      '確定データ・設定・保存内容は変更しません。',
-      '',
-      `現在の初日待機：${fmtIdle(oldFirst?.idleSeconds)}`,
-      `再計算の初日待機：${newFirst ? fmtIdle(newFirst.idleSeconds) : '計算失敗'}`,
-      `現在の初日就寝BG：${oldFirst?.sleepEventRuns ?? '不明'}回`,
-      `再計算の初日就寝BG：${newFirst?.sleepEventRuns ?? '不明'}回`,
-      `現在の全日pt：${current.totalPt?.toLocaleString('ja-JP') ?? '不明'}`,
-      `再計算の全日pt：${fresh.totalPt?.toLocaleString('ja-JP') ?? '不明'}`,
-      `再計算完了：${fresh.days.length}/${s.days}日`,
-      `再計算の判定：${fresh.valid ? '成功' : 'エラーあり'}`
-    ];
-    if (!fresh.valid) {
-      lines.push(...(fresh.candidateFailures || []).slice(0,3).map(x =>
-        `${x.policy}（${x.day}日目）：${x.message}`));
-    }
-    if (fresh.valid && fresh.days.length === s.days) {
-      lines.push('', '「OK」を押すと再計算プレビューを表示します。');
-      previewActive = true;
-    }
-    alert(lines.join('\n'));
-  } catch (err) {
-    alert('再計算プレビューでエラー：' + (err?.message || String(err)));
-  } finally {
-    s.snapshots = savedSnapshots;
-    simulationCache = savedCache;
-    window.__nogifesOptimizationTrace = savedTrace;
-    window.__nogifesCandidateFailures = savedFailures;
-    window.__nogifesCandidateComparisons = savedComparisons;
-    if (previewActive && freshPreview) {
-      page = 'result';
-      render();
-    }
+  previewActive = false;
+  freshPreview = null;
+  simulationCache = null;
+  simulationCacheSignature = null;
+  const refreshed = cachedSimulation();
+  if (!refreshed.valid) {
+    const d = refreshed.days.find(x => x.errors && x.errors.length);
+    alert('予測を更新しましたが計算エラーがあります。\n' +
+      (d?.errors?.join('\n') || '設定・アイテム引き継ぎを確認してください'));
   }
+  page = 'result';
+  render();
 }
 function renderResult() { if (s.mode === 'fullBackground') return renderFullBgResult();
-  const hasComparison = (() => { try { return !!localStorage.getItem(comparisonKey()); } catch (_) { return false; } })();
-  const previewToolbar = previewActive && freshPreview
-    ? panel('再計算プレビュー表示中',
-        '<p class="note">元の確定データは変更しません。Resultとシミュレーションは再計算結果を表示中です。</p>' +
-        '<button class="primary wide" data-action="saveFreshComparison">再計算結果を別保存</button>' +
-        '<button class="ghost wide" data-action="exitFreshPreview">保存済みの確定結果に戻す</button>')
-    : (hasComparison ? panel('再計算結果の比較保存',
-        '<p class="note">確定結果とは別に保存した再計算結果を確認できます。</p>' +
-        '<button class="ghost wide" data-action="loadFreshComparison">別保存した再計算結果を表示</button>' +
-        '<button class="ghost wide" data-action="deleteFreshComparison">比較用の保存結果を削除</button>') : '');
+  const previewToolbar = '';
  const r = cachedSimulation(); const selectedDay = r.days[s.day]; const selectedHasError = !selectedDay || (selectedDay.errors || []).length > 0; if (selectedHasError) { const current = r.days[s.day] || s.snapshots?.[s.day]; const warnings = r.days.flatMap((d, i) => (d.errors || []).map(msg => `<p class="error">${i + 1}日目（予測エラー）：${msg}</p>`)).join('') || `<p class="error">${s.day + 1}日目の予測データを生成できませんでした。前日までの設定・アイテム引継ぎを確認してください。</p>`;
-    const failureDay = r.days.findIndex(x => (x.errors || []).length);
-    const details = failureDay >= 0 ? r.days[failureDay] : r.days.at(-1);
-    const firstFailure = (r.candidateFailures || []).find(x => x.day === s.day + 1) || (r.candidateFailures || [])[0];
-    const diagnostic = `<p class="note">診断情報：計算済み ${r.days.length}/${s.days}日、失敗日 ${failureDay >= 0 ? failureDay + 1 : r.days.length + 1}日目、開始 ${details?.dayStart == null ? '不明' : fmt(details.dayStart)}、終了 ${details?.dayEnd == null ? '不明' : fmt(details.dayEnd)}、残アイテム ${details?.inv ?? '不明'}個</p>` + (firstFailure ? `<p class="error">計算候補 ${escapeAttr(firstFailure.policy)}：${escapeAttr(firstFailure.message)}</p>` : ''); return previewToolbar + panel('計測結果・予測状況', `${current ? row('選択日の獲得pt', num(current.points) + ' pt') + row('選択日の残りアイテム', num(current.inv) + ' 個') : ''}<p class="note">未来日の予測にエラーがあるため、イベント全体の合計は未確定です。当日の計測結果は保存されています。</p>${warnings}${diagnostic}<button class="ghost wide" data-action="previewFirstDay">初日から再計算（保存せず比較）</button><button class="ghost wide" data-action="downloadDiagnostics">診断CSVを保存</button><button class="primary wide" data-action="back">プレイ画面へ戻る</button>`, '!'); } const d = r.days[s.day], actual = todayIndex(); const list = r.days.map((x, i) => `<tr><td>${i + 1}日目（${jp(dateAt(i))}） <span class="pill ${!previewActive && Boolean(s.snapshots?.[i]) ? 'done' : ''}">${previewActive ? '再計算' : s.snapshots?.[i]?.finalized ? '本確定' : s.snapshots?.[i] ? '仮確定' : i === todayIndex() ? '未計測' : '予測'}</span></td><td>${num(x.points)} pt</td></tr>`).join(''); const bgNormal = d.bgNormalSeconds, bgEvent = d.bgEventSeconds, manual = d.manualNormalSeconds + d.manualEventSeconds; const sum = bgNormal + bgEvent + manual || 1; return previewToolbar + (!r.valid ? panel('未来日の予測に関する注意', '<p class="note">選択日の詳細は表示できますが、未来日の一部に計算エラーがあるため、以下の合計ptは計算済み日までの暫定値です。イベント全体の確定値ではありません。</p>' + r.days.flatMap((day, i) => (day.errors || []).map(msg => `<p class="error">${i + 1}日目：${msg}</p>`)).join(''), '!') : '') + panel(r.valid ? '総合結果' : '計算済み日までの暫定結果', `<div class="points">${num(r.totalPt)} pt</div>${row('使用アイテム数', num(r.totalItems) + ' 個')}${row('イベント終了時の残りアイテム数', num(r.days.at(-1).inv) + ' 個')}${row('イベント全体時間', fmt(r.eventWindow))}${row('実プレイ時間（合計）', fmt(r.totalTime))}${row('日中の未使用時間（合計）', fmt(r.days.reduce((v, x) => v + x.idleSeconds, 0)))}`, '▥') + panel('日別獲得ポイント', `<table class="table"><thead><tr><th>日付</th><th>獲得イベントpt</th></tr></thead><tbody>${list}</tbody></table>`, '▣') + panel('時間配分グラフ（選択日）', `<div class="stack"><span style="width:${bgNormal / sum * 100}%;background:#8721e4"></span><span style="width:${bgEvent / sum * 100}%;background:#19b5b8"></span><span style="width:${manual / sum * 100}%;background:#f068b4"></span></div><div class="legend"><span><i style="background:#8721e4"></i>通常バクグラ</span><span><i style="background:#19b5b8"></i>イベントバクグラ</span><span><i style="background:#f068b4"></i>手打ち</span></div>`, '▥') + datebar() + panel('選択日の時間枠', `${row('活動可能時間', fmt(d.awakeAvailable))}${row('ロス時間', fmt(d.lossSeconds || 0))}${row('日中の未使用時間', fmt(d.idleSeconds))}${row('実際の就寝開始', d.adjustedBedAt == null ? '—（最終日は就寝なし）' : fmt(d.adjustedBedAt % 86400))}${row('就寝中バクグラ', s.day === s.days - 1 ? '—（最終日は実施なし）' : fmt(d.sleepEventSeconds))}`, '◷') + panel('選択日のプレイ内訳', `<table class="table"><thead><tr><th>種類</th><th>回数</th><th>時間</th></tr></thead><tbody><tr><td>通常曲（バクグラ）</td><td>${num(d.normalRuns)} 回</td><td>${fmt(d.bgNormalSeconds)}</td></tr><tr><td>通常曲（手打ち）</td><td>${num(d.manualNormal)} 回</td><td>${fmt(d.manualNormalSeconds)}</td></tr><tr><td>イベント曲（バクグラ・日中）</td><td>${num(d.eventRuns - d.sleepEventRuns)} 回</td><td>${fmt(d.bgEventSeconds - d.sleepEventSeconds)}</td></tr><tr><td>イベント曲（バクグラ・就寝中）</td><td>${num(d.sleepEventRuns)} 回</td><td>${fmt(d.sleepEventSeconds)}</td></tr><tr><td>イベント曲（手打ち）</td><td>${num(d.manualEvent)} 回</td><td>${fmt(d.manualEventSeconds)}</td></tr></tbody></table>`, '◷') + (d.errors.length ? panel('計算上の注意', d.errors.map(x => `<p class="error">${x}</p>`).join(''), '!') : '') + panel('アイテム収支', `${row('獲得アイテム数', num(d.earned) + ' 個')}${row('消費アイテム数', num(d.spent) + ' 個')}${row('残りアイテム数', num(d.inv) + ' 個')}`, '▧') + `<button class="ghost wide" data-action="previewFirstDay">初日から再計算（保存せず比較）</button><button class="ghost wide" data-action="downloadDiagnostics">計算ログをCSVで保存</button><p class="small">診断用：日別の未使用時間・アイテム残数・プレイ順序を確認できます。設定は変更されません。</p><button class="primary wide" data-action="back">❮ 戻る</button><p class="small">※数値は設定から算出するシミュレーション値です。日付の経過だけでは実プレイの獲得実績を検証できません。</p>` }
+    const diagnostic = ''; return previewToolbar + panel('計測結果・予測状況', `${current ? row('選択日の獲得pt', num(current.points) + ' pt') + row('選択日の残りアイテム', num(current.inv) + ' 個') : ''}<p class="note">未来日の予測にエラーがあるため、イベント全体の合計は未確定です。当日の計測結果は保存されています。</p>${warnings}${diagnostic}<button class="ghost wide" data-action="previewFirstDay">予測を更新（確定日は保持）</button><button class="primary wide" data-action="back">プレイ画面へ戻る</button>`, '!'); } const d = r.days[s.day], actual = todayIndex(); const list = r.days.map((x, i) => `<tr><td>${i + 1}日目（${jp(dateAt(i))}） <span class="pill ${Boolean(s.snapshots?.[i]) ? 'done' : ''}">${s.snapshots?.[i]?.finalized ? '本確定' : s.snapshots?.[i] ? '仮確定' : i === todayIndex() ? '未計測' : '予測'}</span></td><td>${num(x.points)} pt</td></tr>`).join(''); const bgNormal = d.bgNormalSeconds, bgEvent = d.bgEventSeconds, manual = d.manualNormalSeconds + d.manualEventSeconds; const sum = bgNormal + bgEvent + manual || 1; return previewToolbar + (!r.valid ? panel('未来日の予測に関する注意', '<p class="note">選択日の詳細は表示できますが、未来日の一部に計算エラーがあるため、以下の合計ptは計算済み日までの暫定値です。イベント全体の確定値ではありません。</p>' + r.days.flatMap((day, i) => (day.errors || []).map(msg => `<p class="error">${i + 1}日目：${msg}</p>`)).join(''), '!') : '') + panel(r.valid ? '総合結果' : '計算済み日までの暫定結果', `<div class="points">${num(r.totalPt)} pt</div>${row('使用アイテム数', num(r.totalItems) + ' 個')}${row('イベント終了時の残りアイテム数', num(r.days.at(-1).inv) + ' 個')}${row('イベント全体時間', fmt(r.eventWindow))}${row('実プレイ時間（合計）', fmt(r.totalTime))}${row('日中の未使用時間（合計）', fmt(r.days.reduce((v, x) => v + x.idleSeconds, 0)))}`, '▥') + panel('日別獲得ポイント', `<table class="table"><thead><tr><th>日付</th><th>獲得イベントpt</th></tr></thead><tbody>${list}</tbody></table>`, '▣') + panel('時間配分グラフ（選択日）', `<div class="stack"><span style="width:${bgNormal / sum * 100}%;background:#8721e4"></span><span style="width:${bgEvent / sum * 100}%;background:#19b5b8"></span><span style="width:${manual / sum * 100}%;background:#f068b4"></span></div><div class="legend"><span><i style="background:#8721e4"></i>通常バクグラ</span><span><i style="background:#19b5b8"></i>イベントバクグラ</span><span><i style="background:#f068b4"></i>手打ち</span></div>`, '▥') + datebar() + panel('選択日の時間枠', `${row('活動可能時間', fmt(d.awakeAvailable))}${row('日中の未使用時間', fmt(d.idleSeconds))}${row('実際の就寝開始', d.adjustedBedAt == null ? '—（最終日は就寝なし）' : fmt(d.adjustedBedAt % 86400))}${row('就寝中バクグラ', s.day === s.days - 1 ? '—（最終日は実施なし）' : fmt(d.sleepEventSeconds))}`, '◷') + panel('選択日のプレイ内訳', `<table class="table"><thead><tr><th>種類</th><th>回数</th><th>時間</th></tr></thead><tbody><tr><td>通常曲（バクグラ）</td><td>${num(d.normalRuns)} 回</td><td>${fmt(d.bgNormalSeconds)}</td></tr><tr><td>通常曲（手打ち）</td><td>${num(d.manualNormal)} 回</td><td>${fmt(d.manualNormalSeconds)}</td></tr><tr><td>イベント曲（バクグラ・日中）</td><td>${num(d.eventRuns - d.sleepEventRuns)} 回</td><td>${fmt(d.bgEventSeconds - d.sleepEventSeconds)}</td></tr><tr><td>イベント曲（バクグラ・就寝中）</td><td>${num(d.sleepEventRuns)} 回</td><td>${fmt(d.sleepEventSeconds)}</td></tr><tr><td>イベント曲（手打ち）</td><td>${num(d.manualEvent)} 回</td><td>${fmt(d.manualEventSeconds)}</td></tr></tbody></table>`, '◷') + (d.errors.length ? panel('計算上の注意', d.errors.map(x => `<p class="error">${x}</p>`).join(''), '!') : '') + panel('アイテム収支', `${row('獲得アイテム数', num(d.earned) + ' 個')}${row('消費アイテム数', num(d.spent) + ' 個')}${row('残りアイテム数', num(d.inv) + ' 個')}`, '▧') + `<button class="ghost wide" data-action="previewFirstDay">予測を更新（確定日は保持）</button><button class="primary wide" data-action="back">❮ 戻る</button><p class="small">※数値は設定から算出するシミュレーション値です。日付の経過だけでは実プレイの獲得実績を検証できません。</p>` }
 function renderHistory() { if (s.mode === 'fullBackground') return panel('セット履歴', '<p class="note">フルバクグラは225時間一括計算のため、日別セット履歴はありません。</p>'); return panel('セット履歴', `<p class="small">各日の計測確定状況です。</p><table class="table"><thead><tr><th>日付</th><th>状態</th></tr></thead><tbody>${Array.from({ length: s.days }, (_, i) => `<tr><td>${dayLabel(i)}</td><td>${i > todayIndex() ? '予測（編集不可）' : s.snapshots?.[i]?.finalized ? '本確定（変更不可）' : s.snapshots?.[i] ? '仮確定（変更可能）' : '未計測'}</td></tr>`).join('')}</tbody></table>`, '◷') }
 function renderHelp() { return panel('使い方', `<p>① 初期設定でイベント日程・プレイ方法・楽曲・特攻値を設定します。</p><p>② 今日のプレイ画面でバクグラの種類・時間と精度を設定します。未来の日付は今日の設定から予測します。</p><p>③ 各項目の「決定」を押した後、「計測する」でその日の設定と結果を仮確定します。翌日になると本確定して変更できなくなります。</p><p>④ Resultでは当日は仮確定、翌日以降は本確定、未来日は予測として表示します。</p><p>⑤ イベント終了時は設定画面から「イベント終了」を押します。</p>`, '?') }
 let wheelTarget = null;
@@ -1564,7 +1412,6 @@ function wheelSave() {
   }
   save(); $('wheelModal').hidden = true; render();
 }
-document.addEventListener('input', e => { const k = e.target?.dataset?.loss; if (!k) return; if (!canEditDay()) return; const d = editDayData(); const h = document.querySelector('[data-loss="hours"]'); const m = document.querySelector('[data-loss="minutes"]'); if (!h || !m) return; const hours = Math.min(23, Math.max(0, Number(h.value) || 0)), minutes = Math.min(59, Math.max(0, Number(m.value) || 0)); d.lossMinutes = hours * 60 + minutes; resetTab(d, 'loss'); save() });
 // 計測中表示：重い同期計算を始める前にブラウザへ描画機会を渡す。
 let measurementBusy = false;
 function showMeasurementLoading(message = '計算中です…') {
@@ -1605,37 +1452,14 @@ document.addEventListener('click', e => {
 if (measurementBusy) { e.preventDefault(); return; }
 const pt = e.target.closest('[data-play-tab]'); if (pt) { playTab = pt.dataset.playTab; render(); return } const wheel = e.target.closest('[data-wheel]'); if (wheel) { if (page === 'play' && !canEditDay()) return; wheelOpen(wheel.dataset.wheel, +wheel.dataset.index || 0); return } const nav = e.target.closest('[data-page]'); if (nav) { if (nav.dataset.page === 'result' && s.mode !== 'fullBackground') { const check = cachedSimulation(); if (!check.valid && s.day <= todayIndex()) { const failedIndex = check.days.findIndex(d => (d.errors || []).length);
             const failure = failedIndex >= 0 ? check.days[failedIndex] : null;
-            alert(`計算が成立しないためResultへ移動できません（${failedIndex >= 0 ? failedIndex + 1 + '日目' : '日付不明'}）。\n` + (failure?.errors.join('\n') || 'バクグラ設定を確認してください')); return } } page = nav.dataset.page; render(); return } const b = e.target.closest('[data-action]'); if (!b) return; const act = b.dataset.action; if (act === 'saveFreshComparison') { saveComparison(); return; }
-  if (act === 'loadFreshComparison') { loadComparison(); return; }
-  if (act === 'deleteFreshComparison') {
-    if (confirm('比較用の再計算結果だけを削除しますか？ 確定データは残ります。')) {
-      localStorage.removeItem(comparisonKey()); render();
-    }
-    return;
-  }
-  if (act === 'exitFreshPreview') { previewActive = false; freshPreview = null; render(); return; }
-  if (act === 'previewFirstDay') { previewFromFirstDay(); return; } if (act === 'downloadDiagnostics') { downloadSimulationDiagnostics(); return; }
+            alert(`計算が成立しないためResultへ移動できません（${failedIndex >= 0 ? failedIndex + 1 + '日目' : '日付不明'}）。\n` + (failure?.errors.join('\n') || 'バクグラ設定を確認してください')); return } } page = nav.dataset.page; render(); return } const b = e.target.closest('[data-action]'); if (!b) return; const act = b.dataset.action; if (act === 'previewFirstDay') { previewFromFirstDay(); return; } 
   if (act === 'showBgDetail') { selectedBgDetail = Number(b.dataset.index); selectedBgDetailDay = s.day; render(); return; }
   if (act === 'closeBgDetail') { selectedBgDetail = null; render(); return; }
   if (page === 'play' && !canEditDay() && ['finishAccuracy', 'finishSleep', 'finishBg', 'finishLoss', 'confirmDay', 'activityMode', 'activityConfirm', 'addActivity', 'removeActivity'].includes(act)) return;
   if (act === 'measureFullBg') { measureWithLoading(() => { const result = simulateFullBackground(); if (!result.valid) { alert(result.error); return } s.fullBgResult = { ...result, settings: { song: s.song, eventSeconds: s.eventSeconds, bonus: s.bonus } }; save(); page = 'result'; render(); }); return }
-  if (act === 'toggleTest') { switchMode(!testMode); return }
-  if (act === 'testNextDay' || act === 'testSetDate') {
-    if (!testMode) return;
-    const old = s.testClock || localDayString(new Date());
-    const target = act === 'testNextDay' ? localDayString(new Date(new Date(old + 'T12:00:00').getTime() + 86400000)) : $('testDate')?.value;
-    if (!target || target <= old) { alert('現在より後の日付を選択してください'); return }
-    const first = dateAt(0), before = new Date(target + 'T12:00:00');
-    const lastIndex = Math.round((new Date(before.getFullYear(), before.getMonth(), before.getDate()) - first) / 86400000) - 1;
-    freezeThrough(lastIndex); s.testClock = target; s.lastSeenDate = target; s.day = activeIndex(); save(); page = 'play'; render(); return;
-  }
-  if (act === 'resetTest') {
-    if (!testMode || !confirm('テスト用データだけを初期化しますか？ 本番データは残ります。')) return;
-    const copy = JSON.parse(localStorage.getItem(PROD_KEY) || JSON.stringify(defaults()));
-    copy.testClock = copy.start || localDayString(new Date()); copy.snapshots = {}; copy.lastSeenDate = copy.testClock;
-    s = { ...defaults(), ...copy }; save(); page = s.initialized ? 'settings' : 'setup'; render(); return;
-  }
-  const d = editDayData(), i = +b.dataset.index; if (page === 'play' && !canEditDay() && ['activityMode', 'activityConfirm', 'confirmDay', 'addActivity', 'removeActivity'].includes(act)) return; if (act === 'finishAccuracy') { if (s.mode === 'both' && d.accuracy.reduce((a, v) => a + v, 0) !== 100) { alert('精度の合計を100%にしてください'); return } tabDone(d).accuracy = true; save(); playTab = isFinalDay(s.day) ? 'bg' : 'sleep' } else if (act === 'finishSleep') { const err = s.day === s.days - 1 ? null : sleepScheduleError(d); if (err) { alert(err); return } tabDone(d).sleep = true; save(); playTab = 'bg' } else if (act === 'finishBg') { if (!isFinalDay(s.day) && !tabDone(d).sleep) { alert('先に起床・就寝時刻を確定してください'); playTab = 'sleep'; render(); return } const err = (s.day === s.days - 1 ? null : sleepScheduleError(d, true)) || allActivityTimeError(d); if (err) { alert('バクグラ設定不可：' + err); return } if (d.activities.some(a => activityDuration(a) > 0 && !a.confirmed)) { alert('バクグラ時間を設定した項目は、それぞれ「決定」を押してください'); return } tabDone(d).bg = true; save(); playTab = 'loss' } else if (act === 'finishLoss') { const available = activityAvailableSeconds(d); const bg = d.activities.reduce((v, a) => v + activityDuration(a), 0); if ((d.lossMinutes || 0) * 60 + bg > available) { alert('ロス時間とバクグラ時間の合計が活動可能時間を超えています'); return } tabDone(d).loss = true; save(); playTab = 'measure' } else if (act === 'measureDay') { rollover(); if (s.day > todayIndex()) { measureWithLoading(() => { page = 'result'; render(); }); return } if (!canEditDay()) { alert('この日の計測・変更はできません'); return } if (!['accuracy', 'bg', 'loss'].every(key => tabDone(d)[key]) || (!isFinalDay(s.day) && !tabDone(d).sleep)) { alert(isFinalDay(s.day) ? '精度・バクグラ時間・ロス時間を決定してください' : '4つの設定タブを決定してください'); return } const oldSnap = s.snapshots && s.snapshots[s.day]; if (oldSnap && oldSnap.finalized) { alert('本確定済みの日は再計測できません'); return } if (oldSnap) { delete s.snapshots[s.day]; simulationCache = null; } measureWithLoading(() => { const check = simulate(s.day); if (!check.days[s.day] || check.days[s.day].errors.length) { if (oldSnap) s.snapshots[s.day] = oldSnap; const failedIndex = check.days.findIndex(x => (x.errors || []).length > 0);
+  const d = editDayData(), i = +b.dataset.index; if (page === 'play' && !canEditDay() && ['activityMode', 'activityConfirm', 'confirmDay', 'addActivity', 'removeActivity'].includes(act)) return; if (act === 'finishAccuracy') { if (s.mode === 'both' && d.accuracy.reduce((a, v) => a + v, 0) !== 100) { alert('精度の合計を100%にしてください'); return } tabDone(d).accuracy = true; save(); playTab = isFinalDay(s.day) ? 'bg' : 'sleep' } else if (act === 'finishSleep') { const err = s.day === s.days - 1 ? null : sleepScheduleError(d); if (err) { alert(err); return } tabDone(d).sleep = true; save(); playTab = 'bg' } else if (act === 'finishBg') { if (!isFinalDay(s.day) && !tabDone(d).sleep) { alert('先に起床・就寝時刻を確定してください'); playTab = 'sleep'; render(); return } const err = (s.day === s.days - 1 ? null : sleepScheduleError(d, true)) || allActivityTimeError(d); if (err) { alert('バクグラ設定不可：' + err); return } if (d.activities.some(a => activityDuration(a) > 0 && !a.confirmed)) { alert('バクグラ時間を設定した項目は、それぞれ「決定」を押してください'); return } tabDone(d).bg = true; save(); playTab = 'measure' } else if (act === 'measureDay') { rollover(); if (s.day > todayIndex()) { measureWithLoading(() => { page = 'result'; render(); }); return } if (!canEditDay()) { alert('この日の計測・変更はできません'); return } if (!['accuracy', 'bg'].every(key => tabDone(d)[key]) || (!isFinalDay(s.day) && !tabDone(d).sleep)) { alert(isFinalDay(s.day) ? '精度・バクグラ時間を決定してください' : '3つの設定タブを決定してください'); return } const oldSnap = s.snapshots && s.snapshots[s.day]; if (oldSnap && oldSnap.finalized) { alert('本確定済みの日は再計測できません'); return } if (oldSnap) { delete s.snapshots[s.day]; simulationCache = null; } measureWithLoading(() => { const fullCheck = cachedSimulation();
+    const check = fullCheck.valid ? fullCheck : simulate(s.day);
+    if (!check.days[s.day] || check.days[s.day].errors.length) { if (oldSnap) s.snapshots[s.day] = oldSnap; const failedIndex = check.days.findIndex(x => (x.errors || []).length > 0);
           const failure = failedIndex >= 0 ? check.days[failedIndex] : check.days[s.day];
           const failedDayLabel = failedIndex >= 0 ? `${failedIndex + 1}日目` : `${s.day + 1}日目`;
           alert(`計測できません（${failedDayLabel}）。\n` + (failure?.errors?.join('\n') || '設定を見直してください')); return } confirmMeasuredDay(s.day, check); simulationCache = null; page = 'result'; render(); }); return } else if (act === 'mode') { s.mode = b.dataset.value; save() } else if (act === 'network') { s.network = +b.dataset.value; save() } else if (act === 'prev') s.day = Math.max(0, s.day - 1); else if (act === 'next') s.day = Math.min(s.days - 1, s.day + 1); else if (act === 'addActivity') { const names = TYPES.filter(name => !d.activities.some(a => a.name === name)); const name = names[0] || `追加項目${d.activities.length + 1}`; d.activities.push(s.day === 0 ? {...newActivity(name), startTime:'15:00', endTime:'16:00'} : newActivity(name)); resetTab(d, 'bg'); save() } else if (act === 'removeActivity') { if (i > 0 && i < d.activities.length) { d.activities.splice(i, 1); resetTab(d, 'bg'); save() } } else if (act === 'activityMode') { d.activities[i].mode = b.dataset.value; d.activities[i].confirmed = false; resetTab(d, 'bg'); save() } else if (act === 'activityConfirm') { if (Number.isInteger(i) && i >= 0 && i < d.activities.length) { if (!d.activities[i].name.trim()) { alert('項目名を入力してください'); return } const error = activityTimeError(d, i); if (error) { alert(error); return } d.activities[i].confirmed = true; resetTab(d, 'bg'); save() } } else if (act === 'confirmDay') { if (s.mode === 'both' && d.accuracy.reduce((a, v) => a + v, 0) !== 100) { alert('精度の合計を100%にしてください'); return } if (d.activities.some(a => !a.name.trim())) { alert('バクグラ項目名を入力してください'); return } const timeError = allActivityTimeError(d); if (timeError) { alert(timeError); return } if (d.activities.some(a => activityDuration(a) > 0 && !a.confirmed)) { alert('実行時間を入力した項目は「決定」を押してください'); return } const check = simulate(); if (!check.valid) { const failure = check.days.find(x => x.errors.length); alert('設定したバクグラ時間を実行できないため確定できません。\n' + (failure?.errors.join('\n') || '設定を見直してください')); return } save(); alert('設定を保存しました。計測するを押すと結果が確定します') } else if (act === 'saveSettings') { if (!s.start) { alert('イベント開始日を入力してください'); return } if (!(s.song >= 0 && s.song < SONGS.length)) { alert('通常曲を選択してください'); return } if (!(s.eventSeconds > 0)) { alert('イベント曲時間を入力してください'); return } if (s.bonus === null || s.bonus === '' || !Number.isFinite(Number(s.bonus)) || s.bonus < 0 || s.bonus > 9999) { alert('特攻値は0～9999%で入力してください'); return } s.initialized = true; s.day = activeIndex(); save(); page = 'play' } else if (act === 'end') { $('confirmModal').hidden = false; return } else if (act === 'back') { page = 'play'; playTab = 'measure'; } render()
@@ -1930,13 +1754,13 @@ $('wheelCancel').onclick = () => $('wheelModal').hidden = true; $('wheelOk').onc
 // ===== 設定の保存：この端末（localStorage）＋ 自分専用のクラウド保存（db）=====
 var cloudRef = null, cloudTimer = 0;
 function cloudDirty() {
-  if (!cloudRef || testMode) return;
+  if (!cloudRef) return;
   clearTimeout(cloudTimer);
   cloudTimer = setTimeout(() => { try { cloudRef.set({ json: JSON.stringify(s), savedAt: s.savedAt || Date.now() }).catch(() => { }) } catch (e) { } }, 1200);
 }
 (async () => {
   try {
-    if (!window.claude || !claude.use || testMode) return;
+    if (!window.claude || !claude.use) return;
     const db = await claude.use('db'), user = await claude.use('user');
     if (!db || !user) return;
     const id = await user.id(); if (!id) return;
